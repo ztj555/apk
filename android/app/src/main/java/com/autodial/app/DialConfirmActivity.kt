@@ -8,7 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.telecom.PhoneAccountHandle
+import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import android.widget.Button
 import android.widget.TextView
@@ -90,13 +90,13 @@ class DialConfirmActivity : AppCompatActivity() {
             // 指定SIM卡拨号
             if (simSlot == 2) {
                 val telecomManager = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                val phoneAccounts = telecomManager.phoneAccounts
-                    .filter { it.hasCapabilities(android.telecom.PhoneAccount.CAPABILITY_CALL_PROVIDER) == false }
+                @Suppress("DEPRECATION")
+                val phoneAccounts = telecomManager.callCapablePhoneAccounts
 
                 // 尝试通过不同的 PhoneAccountHandle 选择 SIM 卡
                 if (phoneAccounts.size >= 2) {
                     // phoneAccounts 通常按 SIM 卡槽排序
-                    val handle = phoneAccounts[simSlot - 1].accountHandle
+                    val handle = phoneAccounts[simSlot - 1]
                     telecomManager.placeCall(
                         Uri.parse("tel:$number"),
                         Bundle().apply {

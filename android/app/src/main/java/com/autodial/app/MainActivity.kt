@@ -32,7 +32,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var generatePairBtn: Button
     private lateinit var unpairBtn: Button
     private lateinit var pairStatusText: TextView
-    private lateinit var logText: TextView
 
     private val gson = Gson()
 
@@ -159,9 +158,12 @@ class MainActivity : AppCompatActivity() {
             .setTitle("确认解绑")
             .setMessage("解绑后需要重新配对才能使用拨号功能，确定解绑吗？")
             .setPositiveButton("解绑") { _, _ ->
-                DialService.unpair()
+                // 通过广播通知服务解绑
+                val intent = Intent("com.autodial.ACTION_UNPAIR")
+                sendBroadcast(intent)
+                Toast.makeText(this, "已发送解绑请求", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.IO).launch {
-                    delay(500)
+                    delay(1000)
                     runOnUiThread { refreshStatus() }
                 }
             }

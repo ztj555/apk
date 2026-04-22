@@ -1,10 +1,13 @@
 package com.autodial.app
 
 import android.app.*
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
+import android.os.IBinder
 import android.telecom.TelecomManager
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -55,6 +58,7 @@ class DialService : Service() {
         .build()
     private val gson = Gson()
     private var serviceJob: Job? = null
+    private lateinit var broadcastReceiver: BroadcastReceiver
 
     // ==================== 服务生命周期 ====================
 
@@ -62,6 +66,27 @@ class DialService : Service() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("AutoDial 运行中"))
+        registerBroadcastReceiver()
+    }
+
+    private fun registerBroadcastReceiver() {
+        broadcastReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    "com.autodial.ACTION_REQUEST_PAIR" -> {
+                        sendToServer(mapOf("type" to "phone_request_pair"))
+                    }
+                    "com.autodial.ACTION_UNPAIR" -> {
+                        sendToServer(mapOf("type" to "unpair"))
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction("com.autodial.ACTION_REQUEST_PAIR")
+            addAction("com.autodial.ACTION_UNPAIR")
+        }
+        registerReceiver(broadcastReceiver, filter)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -75,6 +100,7 @@ class DialService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try { unregisterReceiver(broadcastReceiver) } catch (_: Exception) {}
         webSocket?.close(1000, "Service destroyed")
         serviceJob?.cancel()
         updateStatus(false, false, null, "服务已停止", false)
@@ -268,16 +294,6 @@ class DialService : Service() {
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(2001, notification)
-    }
-
-    // ==================== 配对操作（供 Activity 调用） ====================
-
-    fun requestPair() {
-        sendToServer(mapOf("type" to "phone_request_pair"))
-    }
-
-    fun unpair() {
-        sendToServer(mapOf("type" to "unpair"))
     }
 
     // ==================== 通知管理 ====================
