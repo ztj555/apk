@@ -1,22 +1,23 @@
 package com.autodial.app
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
-import android.telecom.TelecomManager
-import android.view.WindowManager
-import android.widget.*
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.google.gson.Gson
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 主界面：服务器配置、配对管理、连接状态
@@ -33,13 +34,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var unpairBtn: Button
     private lateinit var pairStatusText: TextView
 
-    private val gson = Gson()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // 状态栏透明
         window.statusBarColor = getColor(R.color.bg_primary)
 
         prefs = getSharedPreferences("autodial", Context.MODE_PRIVATE)
@@ -64,7 +62,6 @@ class MainActivity : AppCompatActivity() {
         generatePairBtn = findViewById(R.id.generatePairBtn)
         unpairBtn = findViewById(R.id.unpairBtn)
         pairStatusText = findViewById(R.id.pairStatusText)
-        logText = findViewById(R.id.logText)
 
         connectBtn.setOnClickListener { connectToServer() }
         generatePairBtn.setOnClickListener { generatePairCode() }
@@ -77,7 +74,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun observeServiceStatus() {
-        DialService.onStatusChanged = { connected, paired, code, msg, online ->
+        DialService.onStatusChanged = { _, _, _, _, _ ->
             runOnUiThread { refreshStatus() }
         }
     }
@@ -88,20 +85,17 @@ class MainActivity : AppCompatActivity() {
         val code = DialService.pairCode
         val online = DialService.phoneOnline
 
-        // 状态指示
         statusDot.setImageResource(
             if (connected) R.drawable.dot_green else R.drawable.dot_gray
         )
         statusText.text = DialService.statusMessage
 
-        // 连接按钮
         connectBtn.text = if (connected) "已连接" else "连接"
         connectBtn.isEnabled = !connected
 
-        // 配对区域
         if (paired) {
             pairCodeText.text = "配对码: $code"
-            pairStatusText.text = if (online) "✅ 电脑在线" else "⚠️ 电脑离线"
+            pairStatusText.text = if (online) "电脑在线" else "电脑离线"
             generatePairBtn.visibility = Button.GONE
             unpairBtn.visibility = Button.VISIBLE
         } else if (connected && code != null) {
@@ -124,10 +118,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 保存配置
         prefs.edit().putString("server_url", url).apply()
 
-        // 启动服务
         val intent = Intent(this, DialService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -139,16 +131,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun generatePairCode() {
-        // 通过服务生成配对码（这里直接发消息给服务）
-        // 简化处理：通过广播发送
         val intent = Intent("com.autodial.ACTION_REQUEST_PAIR")
         sendBroadcast(intent)
-
-        // 实际通过 Service 静态方法
         toast("正在生成配对码...")
         CoroutineScope(Dispatchers.IO).launch {
-            // 等待服务处理
-            delay(1000)
+            delay(1500)
             runOnUiThread { refreshStatus() }
         }
     }
@@ -158,10 +145,9 @@ class MainActivity : AppCompatActivity() {
             .setTitle("确认解绑")
             .setMessage("解绑后需要重新配对才能使用拨号功能，确定解绑吗？")
             .setPositiveButton("解绑") { _, _ ->
-                // 通过广播通知服务解绑
                 val intent = Intent("com.autodial.ACTION_UNPAIR")
                 sendBroadcast(intent)
-                Toast.makeText(this, "已发送解绑请求", Toast.LENGTH_SHORT).show()
+                toast("已发送解绑请求")
                 CoroutineScope(Dispatchers.IO).launch {
                     delay(1000)
                     runOnUiThread { refreshStatus() }
@@ -170,8 +156,6 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("取消", null)
             .show()
     }
-
-    // ==================== 权限管理 ====================
 
     private fun checkPermissions() {
         val needed = mutableListOf<String>()
@@ -190,7 +174,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // CALL_PHONE 权限
         if (checkSelfPermission(Manifest.permission.CALL_PHONE)
             != PackageManager.PERMISSION_GRANTED) {
             needed.add(Manifest.permission.CALL_PHONE)
@@ -210,7 +193,7 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == 100) {
             val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
             if (!allGranted) {
-                toast("⚠️ 部分权限未授予，可能影响拨号功能")
+                toast("部分权限未授予，可能影响拨号功能")
             }
         }
     }
