@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="@color/bg_primary">
+
+    <!-- 标题 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="24dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="📞 AutoDial"
+            android:textSize="28sp"
+            android:textColor="@color/accent"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="手机端"
+            android:textSize="13sp"
+            android:textColor="@color/text_muted" />
+    </LinearLayout>
+
+    <!-- 连接状态 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="14dp"
+        android:background="@color/bg_secondary"
+        android:layout_marginBottom="16dp">
+
+        <ImageView
+            android:id="@+id/statusDot"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:src="@drawable/dot_gray"
+            android:layout_marginEnd="10dp" />
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="未连接到服务器"
+            android:textSize="13sp"
+            android:textColor="@color/text_secondary" />
+    </LinearLayout>
+
+    <!-- 服务器配置 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🔗 服务器连接"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_primary"
+        android:layout_marginBottom="10dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <EditText
+            android:id="@+id/serverInput"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="@color/bg_card"
+            android:hint="wss://your-server.com/ws"
+            android:textColorHint="@color/text_muted"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:paddingHorizontal="14dp"
+            android:layout_marginEnd="8dp"
+            android:inputType="textUri"
+            android:singleLine="true" />
+
+        <Button
+            android:id="@+id/connectBtn"
+            android:layout_width="72dp"
+            android:layout_height="48dp"
+            android:text="连接"
+            android:textSize="14sp"
+            android:textColor="@color/bg_primary"
+            android:backgroundTint="@color/accent" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="💡 输入中转服务器的 WebSocket 地址"
+        android:textSize="12sp"
+        android:textColor="@color/text_muted"
+        android:layout_marginBottom="24dp" />
+
+    <!-- 配对区域 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🤝 设备配对"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_primary"
+        android:layout_marginBottom="14dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:background="@color/bg_secondary"
+        android:layout_marginBottom="16dp"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/pairCodeText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="未生成配对码"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:letterSpacing="0.15"
+            android:layout_marginBottom="10dp" />
+
+        <TextView
+            android:id="@+id/pairStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="请先连接服务器"
+            android:textSize="13sp"
+            android:textColor="@color/text_muted"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/generatePairBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:text="生成配对码"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/bg_primary"
+            android:backgroundTint="@color/accent"
+            android:paddingHorizontal="24dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/unpairBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:text="解绑设备"
+            android:textSize="14sp"
+            android:textColor="@color/danger"
+            android:backgroundTint="@android:color/transparent"
+            android:paddingHorizontal="24dp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- 说明 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="📌 使用说明\n\n1. 输入服务器地址并连接\n2. 点击「生成配对码」\n3. 在电脑端网页输入配对码\n4. 配对成功后，电脑端发送的拨号指令会自动弹窗确认\n\n⚠️ 请保持APP在后台运行，不要手动关闭"
+        android:textSize="13sp"
+        android:textColor="@color/text_muted"
+        android:lineSpacingExtra="4dp" />
+
+</LinearLayout>

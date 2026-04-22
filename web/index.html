@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoDial - 一键拨号控制台</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-primary: #0f1923;
+      --bg-secondary: #1a2736;
+      --bg-card: #1e3044;
+      --accent: #00d4aa;
+      --accent-hover: #00f0c0;
+      --accent-dim: rgba(0, 212, 170, 0.15);
+      --danger: #ff4757;
+      --danger-dim: rgba(255, 71, 87, 0.15);
+      --warning: #ffa502;
+      --text-primary: #e8f0f8;
+      --text-secondary: #8899aa;
+      --text-muted: #556677;
+      --border: #2a3f55;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* 背景效果 */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -50%;
+      right: -30%;
+      width: 80vw;
+      height: 80vw;
+      background: radial-gradient(circle, rgba(0,212,170,0.06) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* 顶部 */
+    .header {
+      text-align: center;
+      padding: 30px 0 20px;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), #00a8ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 6px;
+    }
+
+    .header p {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    /* 状态条 */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-sm);
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+
+    .status-dot.connected { background: var(--accent); box-shadow: 0 0 8px rgba(0,212,170,0.5); }
+    .status-dot.error { background: var(--danger); box-shadow: 0 0 8px rgba(255,71,87,0.5); }
+
+    .status-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+      flex: 1;
+    }
+
+    /* 服务器地址输入 */
+    .server-config {
+      margin-bottom: 16px;
+    }
+
+    .server-config label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 12px 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+
+    input[type="text"]::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* 按钮 */
+    .btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn:active { transform: scale(0.97); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg-primary);
+    }
+
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { background: var(--text-muted); cursor: not-allowed; }
+
+    .btn-danger {
+      background: var(--danger-dim);
+      color: var(--danger);
+      border: 1px solid rgba(255,71,87,0.3);
+    }
+
+    .btn-danger:hover { background: rgba(255,71,87,0.25); }
+
+    .btn-secondary {
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover { background: var(--bg-card); color: var(--text-primary); }
+
+    /* 卡片 */
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title .icon { font-size: 18px; }
+
+    /* 配对区域 */
+    .pair-section { display: none; }
+    .pair-section.visible { display: block; }
+
+    .pair-input {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .pair-code-input {
+      flex: 1;
+      text-align: center;
+      font-size: 24px !important;
+      letter-spacing: 8px;
+      font-weight: 700;
+      padding: 14px !important;
+    }
+
+    .pair-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .pair-success {
+      display: none;
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    .pair-success .icon { font-size: 48px; margin-bottom: 10px; }
+    .pair-success .label { color: var(--accent); font-weight: 600; font-size: 16px; }
+
+    /* 拨号区域 */
+    .dial-section { display: none; }
+    .dial-section.visible { display: block; }
+
+    .sim-selector {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .sim-btn {
+      flex: 1;
+      padding: 10px;
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .sim-btn:hover { border-color: var(--text-muted); }
+
+    .sim-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .sim-btn .carrier {
+      display: block;
+      font-size: 11px;
+      font-weight: 400;
+      margin-top: 2px;
+      color: var(--text-muted);
+    }
+
+    .dial-input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .dial-input-group input {
+      flex: 1;
+      font-size: 20px !important;
+      letter-spacing: 2px;
+      padding: 16px !important;
+    }
+
+    .btn-dial {
+      width: 100%;
+      padding: 16px;
+      font-size: 18px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), #00a8ff);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn-dial:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-dial:active { transform: scale(0.98); }
+    .btn-dial:disabled { filter: grayscale(0.5); cursor: not-allowed; transform: none; }
+
+    .btn-dial .icon { font-size: 22px; }
+
+    /* 号码快捷按钮 */
+    .quick-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .quick-actions .btn { flex: 1; font-size: 12px; padding: 8px; }
+
+    /* 日志区域 */
+    .log-card {
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .log-card::-webkit-scrollbar { width: 4px; }
+    .log-card::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 2px; }
+
+    .log-empty {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 30px 0;
+      font-size: 13px;
+    }
+
+    .log-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .log-item:last-child { border-bottom: none; }
+
+    .log-item .time { color: var(--text-muted); font-size: 12px; flex-shrink: 0; }
+    .log-item .number { color: var(--text-primary); font-weight: 600; flex: 1; }
+    .log-item .sim-tag {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    .log-item.success .status-icon { color: var(--accent); }
+    .log-item.failed .status-icon { color: var(--danger); }
+    .log-item.pending .status-icon { color: var(--warning); }
+
+    /* Toast 通知 */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      padding: 12px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+      max-width: 320px;
+    }
+
+    .toast.success { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(0,212,170,0.3); }
+    .toast.error { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(255,71,87,0.3); }
+    .toast.info { background: rgba(0,168,255,0.15); color: #00a8ff; border: 1px solid rgba(0,168,255,0.3); }
+
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+    /* 响应式 */
+    @media (max-width: 500px) {
+      .container { padding: 12px; }
+      .header h1 { font-size: 24px; }
+      .dial-input-group input { font-size: 18px !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <div class="container">
+    <!-- 头部 -->
+    <div class="header">
+      <h1>📞 AutoDial</h1>
+      <p>电脑一键拨号 · 手机自动呼叫</p>
+    </div>
+
+    <!-- 连接状态 -->
+    <div class="status-bar">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-text" id="statusText">未连接到服务器</span>
+    </div>
+
+    <!-- 服务器配置 -->
+    <div class="server-config card">
+      <div class="card-title"><span class="icon">🔗</span> 服务器连接</div>
+      <div class="input-row">
+        <input type="text" id="serverUrl" placeholder="例如: wss://your-server.onrender.com/ws" value="">
+        <button class="btn btn-primary" id="connectBtn" onclick="connectServer()">连接</button>
+      </div>
+      <div style="margin-top: 10px; font-size: 12px; color: var(--text-muted);">
+        💡 请输入中转服务器的 WebSocket 地址
+      </div>
+    </div>
+
+    <!-- 配对区域 -->
+    <div class="pair-section card" id="pairSection">
+      <div class="card-title"><span class="icon">🤝</span> 设备配对</div>
+      
+      <div id="pairForm">
+        <div class="pair-input">
+          <input type="text" class="pair-code-input" id="pairCodeInput" placeholder="000000" maxlength="6" 
+                 oninput="this.value=this.value.replace(/\D/g,'')">
+          <button class="btn btn-primary" onclick="submitPairCode()">配对</button>
+        </div>
+        <div class="pair-hint">
+          请打开手机端 APP，点击「生成配对码」<br>
+          然后在上方输入显示的 6 位数字
+        </div>
+      </div>
+
+      <div class="pair-success" id="pairSuccess">
+        <div class="icon">✅</div>
+        <div class="label">配对成功</div>
+        <div style="color: var(--text-muted); font-size: 13px; margin-top: 6px;" id="pairInfo"></div>
+        <button class="btn btn-danger" style="margin-top: 14px;" onclick="unpair()">解绑设备</button>
+      </div>
+    </div>
+
+    <!-- 拨号区域 -->
+    <div class="dial-section card" id="dialSection">
+      <div class="card-title"><span class="icon">📲</span> 拨打电话</div>
+
+      <!-- SIM卡选择 -->
+      <div class="sim-selector">
+        <div class="sim-btn active" id="sim1Btn" onclick="selectSim(1)">
+          SIM 1
+          <span class="carrier">主卡</span>
+        </div>
+        <div class="sim-btn" id="sim2Btn" onclick="selectSim(2)">
+          SIM 2
+          <span class="carrier">副卡</span>
+        </div>
+      </div>
+
+      <!-- 号码输入 -->
+      <div class="dial-input-group">
+        <input type="text" id="phoneInput" placeholder="输入电话号码" 
+               oninput="this.value=this.value.replace(/[^\d+*-]/g,'')"
+               onkeydown="if(event.key==='Enter')makeCall()">
+        <button class="btn btn-primary" onclick="makeCall()" id="callBtn">拨号</button>
+      </div>
+
+      <button class="btn-dial" onclick="makeCall()">
+        <span class="icon">📞</span>
+        立即拨号
+      </button>
+
+      <div class="quick-actions">
+        <button class="btn btn-secondary" onclick="pasteNumber()">📋 粘贴号码</button>
+        <button class="btn btn-secondary" onclick="clearNumber()">🗑️ 清空</button>
+      </div>
+    </div>
+
+    <!-- 拨号记录 -->
+    <div class="card log-card" id="logCard">
+      <div class="card-title"><span class="icon">📋</span> 拨号记录</div>
+      <div class="log-empty" id="logEmpty">暂无拨号记录</div>
+      <div id="logList"></div>
+    </div>
+  </div>
+
+  <script>
+    // ==================== 状态管理 ====================
+    let ws = null;
+    let deviceId = null;
+    let isConnected = false;
+    let isPaired = false;
+    let selectedSim = 1;
+    let callLogs = [];
+
+    // 从 localStorage 恢复配置
+    const savedServer = localStorage.getItem('autodial_server') || '';
+    document.getElementById('serverUrl').value = savedServer;
+
+    // ==================== 服务器连接 ====================
+    function connectServer() {
+      const url = document.getElementById('serverUrl').value.trim();
+      if (!url) {
+        showToast('请输入服务器地址', 'error');
+        return;
+      }
+
+      updateStatus('connecting', '正在连接...');
+      document.getElementById('connectBtn').disabled = true;
+
+      try {
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+          isConnected = true;
+          localStorage.setItem('autodial_server', url);
+          updateStatus('connected', '已连接到服务器');
+          document.getElementById('connectBtn').textContent = '已连接';
+          document.getElementById('connectBtn').disabled = true;
+          showToast('服务器连接成功', 'success');
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          handleServerMessage(data);
+        };
+
+        ws.onclose = () => {
+          isConnected = false;
+          isPaired = false;
+          updateStatus('disconnected', '连接已断开');
+          document.getElementById('connectBtn').textContent = '重新连接';
+          document.getElementById('connectBtn').disabled = false;
+          document.getElementById('pairSection').classList.remove('visible');
+          document.getElementById('dialSection').classList.remove('visible');
+          showToast('服务器连接断开', 'error');
+        };
+
+        ws.onerror = (err) => {
+          updateStatus('error', '连接失败');
+          document.getElementById('connectBtn').textContent = '重试';
+          document.getElementById('connectBtn').disabled = false;
+          showToast('无法连接到服务器，请检查地址', 'error');
+        };
+      } catch (e) {
+        showToast('WebSocket 连接错误', 'error');
+        document.getElementById('connectBtn').disabled = false;
+      }
+    }
+
+    function sendToServer(data) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(data));
+      }
+    }
+
+    // ==================== 消息处理 ====================
+    function handleServerMessage(data) {
+      switch (data.type) {
+        case 'connected':
+          deviceId = data.deviceId;
+          // 注册为电脑端
+          sendToServer({ type: 'register', deviceType: 'pc' });
+          // 查询状态
+          setTimeout(() => sendToServer({ type: 'get_status' }), 500);
+          break;
+
+        case 'status_update':
+          if (data.status === 'paired') {
+            isPaired = true;
+            showPairedUI(data.pairCode, data.pairedDeviceOnline);
+          } else {
+            showUnpairedUI();
+          }
+          break;
+
+        case 'pair_success':
+          isPaired = true;
+          showToast(data.message || '配对成功！', 'success');
+          showPairedUI(data.pairCode, true);
+          break;
+
+        case 'pair_failed':
+          showToast(data.message || '配对失败', 'error');
+          break;
+
+        case 'unpaired':
+          isPaired = false;
+          showUnpairedUI();
+          showToast(data.reason || '设备已解绑', 'info');
+          break;
+
+        case 'unpair_success':
+          isPaired = false;
+          showUnpairedUI();
+          showToast('已解绑', 'info');
+          break;
+
+        case 'phone_offline':
+          showToast('⚠️ 手机不在线，请确认APP正在运行', 'error');
+          break;
+
+        case 'dial_sent':
+          addLog(data.number, data.simSlot, 'pending', '已发送');
+          showToast(`正在拨号 ${data.number}`, 'info');
+          break;
+
+        case 'dial_result':
+          updateLog(data.number, data.success ? 'success' : 'failed', 
+                    data.success ? '拨号成功' : (data.message || '拨号失败'));
+          showToast(data.success ? '✅ 拨号成功' : `❌ ${data.message || '拨号失败'}`,
+                    data.success ? 'success' : 'error');
+          break;
+
+        case 'dial_error':
+          showToast(data.message || '拨号失败', 'error');
+          break;
+
+        case 'error':
+          showToast(data.message || '发生错误', 'error');
+          break;
+      }
+    }
+
+    // ==================== 配对功能 ====================
+    function showPairedUI(pairCode, phoneOnline) {
+      document.getElementById('pairForm').style.display = 'none';
+      document.getElementById('pairSuccess').style.display = 'block';
+      document.getElementById('pairInfo').textContent = 
+        `配对码: ${pairCode} | 手机: ${phoneOnline ? '🟢 在线' : '🔴 离线'}`;
+      document.getElementById('dialSection').classList.add('visible');
+    }
+
+    function showUnpairedUI() {
+      document.getElementById('pairForm').style.display = 'block';
+      document.getElementById('pairSuccess').style.display = 'none';
+      document.getElementById('dialSection').classList.remove('visible');
+    }
+
+    function submitPairCode() {
+      const code = document.getElementById('pairCodeInput').value.trim();
+      if (code.length !== 6) {
+        showToast('请输入6位配对码', 'error');
+        return;
+      }
+      sendToServer({ type: 'pc_request_pair', pairCode: code });
+      showToast('正在配对...', 'info');
+    }
+
+    function unpair() {
+      sendToServer({ type: 'unpair' });
+    }
+
+    // ==================== 拨号功能 ====================
+    function selectSim(slot) {
+      selectedSim = slot;
+      document.getElementById('sim1Btn').classList.toggle('active', slot === 1);
+      document.getElementById('sim2Btn').classList.toggle('active', slot === 2);
+    }
+
+    function makeCall() {
+      const number = document.getElementById('phoneInput').value.trim();
+      if (!number) {
+        showToast('请输入电话号码', 'error');
+        document.getElementById('phoneInput').focus();
+        return;
+      }
+      if (!isPaired) {
+        showToast('请先完成设备配对', 'error');
+        return;
+      }
+
+      sendToServer({ type: 'dial', number, simSlot: selectedSim });
+    }
+
+    async function pasteNumber() {
+      try {
+        const text = await navigator.clipboard.readText();
+        // 提取数字
+        const digits = text.replace(/[^\d+]/g, '');
+        if (digits) {
+          document.getElementById('phoneInput').value = digits;
+          showToast('已粘贴号码', 'success');
+        } else {
+          showToast('剪贴板中没有有效号码', 'error');
+        }
+      } catch (e) {
+        showToast('无法访问剪贴板', 'error');
+      }
+    }
+
+    function clearNumber() {
+      document.getElementById('phoneInput').value = '';
+      document.getElementById('phoneInput').focus();
+    }
+
+    // ==================== 拨号记录 ====================
+    function addLog(number, simSlot, status, message) {
+      callLogs.unshift({
+        number,
+        simSlot,
+        status,
+        message,
+        time: new Date().toLocaleTimeString('zh-CN', { hour12: false })
+      });
+      if (callLogs.length > 50) callLogs.pop();
+      renderLogs();
+    }
+
+    function updateLog(number, status, message) {
+      const log = callLogs.find(l => l.number === number && l.status === 'pending');
+      if (log) {
+        log.status = status;
+        log.message = message;
+        renderLogs();
+      }
+    }
+
+    function renderLogs() {
+      const container = document.getElementById('logList');
+      const empty = document.getElementById('logEmpty');
+
+      if (callLogs.length === 0) {
+        empty.style.display = 'block';
+        container.innerHTML = '';
+        return;
+      }
+
+      empty.style.display = 'none';
+      container.innerHTML = callLogs.map(log => {
+        const statusIcon = log.status === 'success' ? '✅' : 
+                          log.status === 'failed' ? '❌' : '⏳';
+        return `
+          <div class="log-item ${log.status}">
+            <span class="time">${log.time}</span>
+            <span class="status-icon">${statusIcon}</span>
+            <span class="number">${log.number}</span>
+            <span class="sim-tag">SIM${log.simSlot}</span>
+            <span style="font-size:12px;color:var(--text-muted)">${log.message}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ==================== UI 辅助 ====================
+    function updateStatus(state, text) {
+      const dot = document.getElementById('statusDot');
+      const label = document.getElementById('statusText');
+      dot.className = 'status-dot';
+      label.textContent = text;
+
+      if (state === 'connected') dot.classList.add('connected');
+      else if (state === 'error') dot.classList.add('error');
+
+      if (state === 'connected' || state === 'connecting') {
+        document.getElementById('pairSection').classList.add('visible');
+      }
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    // 自动连接（如果之前保存过服务器地址）
+    if (savedServer) {
+      setTimeout(connectServer, 500);
+    }
+  </script>
+</body>
+</html>
