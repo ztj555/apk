@@ -337,6 +337,33 @@ const HTML_CONTENT = `<!DOCTYPE html>
     cursor: not-allowed;
     opacity: 0.6;
   }
+  .hangup-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #C0392B, #96281B);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    letter-spacing: 1px;
+  }
+  .hangup-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #E74C3C, #C0392B);
+    transform: translateY(-1px);
+  }
+  .hangup-btn:disabled {
+    background: var(--bg3);
+    color: var(--text2);
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
   .log-section {
     width: 300px;
     background: var(--bg2);
@@ -484,6 +511,9 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <button class="call-btn" id="callBtn" onclick="dial()" disabled>
       &#x1F4DE; &nbsp;拨号
     </button>
+    <button class="hangup-btn" id="hangupBtn" onclick="hangup()" disabled>
+      &#x1F4F5; &nbsp;挂断
+    </button>
   </div>
   <div class="log-section">
     <div class="log-header">
@@ -520,6 +550,8 @@ function connect() {
     } else if (msg.type === 'error') {
       showToast(msg.message, 'error');
       addLog('error', msg.message);
+    } else if (msg.type === 'hangup_sent') {
+      addLog('info', '&#x1F4F5; 挂断指令已发送到手机');
     }
   };
   ws.onclose = () => {
@@ -550,11 +582,13 @@ function setPhoneConnected(connected, phoneIP) {
   const text = document.getElementById('statusText');
   const banner = document.getElementById('connectBanner');
   const callBtn = document.getElementById('callBtn');
+  const hangupBtn = document.getElementById('hangupBtn');
   if (connected) {
     badge.className = 'status-badge connected';
     text.textContent = phoneIP ? '已连接 ' + phoneIP : '手机已连接';
     banner.className = 'connect-banner show';
     callBtn.disabled = false;
+    hangupBtn.disabled = false;
     addLog('success', '&#x2705; 手机连接成功' + (phoneIP ? ' \\u00B7 ' + phoneIP : ''));
     showToast('手机已连接！可以开始拨号了', 'success');
   } else {
@@ -562,6 +596,7 @@ function setPhoneConnected(connected, phoneIP) {
     text.textContent = '等待手机连接';
     banner.className = 'connect-banner';
     callBtn.disabled = true;
+    hangupBtn.disabled = true;
     addLog('error', '手机已断开连接');
   }
 }
@@ -594,6 +629,14 @@ function dial() {
   if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('服务连接异常', 'error'); return; }
   ws.send(JSON.stringify({ type: 'dial', number: number, sim: selectedSim }));
   addLog('info', '&#x1F4E4; 发送拨号: ' + number + ' (SIM' + selectedSim + ')');
+}
+
+function hangup() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('服务连接异常', 'error'); return; }
+  if (!isConnected) { showToast('手机未连接', 'error'); return; }
+  ws.send(JSON.stringify({ type: 'hangup' }));
+  addLog('info', '&#x1F4F5; 已发送挂断指令');
+  showToast('已发送挂断指令');
 }
 
 async function pasteFromClipboard() {
@@ -838,6 +881,18 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'dial_result') {
         console.log('[结果] ' + msg.number + ': ' + msg.status);
         notifyUIDialResult(msg);
+        return;
+      }
+
+      // 电脑端发挂断指令
+      if (msg.type === 'hangup') {
+        if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'error', message: '手机未连接' }));
+          return;
+        }
+        phoneSocket.send(JSON.stringify({ type: 'hangup' }));
+        console.log('[挂断] 电脑端发送挂断指令');
+        ws.send(JSON.stringify({ type: 'hangup_sent' }));
         return;
       }
 

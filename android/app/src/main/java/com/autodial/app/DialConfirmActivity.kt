@@ -29,30 +29,17 @@ class DialConfirmActivity : AppCompatActivity() {
         val titleText = findViewById<TextView>(R.id.confirmTitle)
         val numberText = findViewById<TextView>(R.id.confirmNumber)
         val simInfo = findViewById<TextView>(R.id.confirmSim)
-        val btnSim1 = findViewById<Button>(R.id.btnDialSim1)
-        val btnSim2 = findViewById<Button>(R.id.btnDialSim2)
+        val btnDial = findViewById<Button>(R.id.btnDial)
         val btnCancel = findViewById<Button>(R.id.btnCancel)
 
-        titleText.text = "来电拨号请求"
+        titleText.text = "📞 来电拨号请求"
         numberText.text = formatPhone(number)
-        simInfo.text = "电脑选择: SIM $sim"
+        simInfo.text = "使用 SIM $sim 拨号"
+        btnDial.text = "📶  SIM $sim 拨号 $number"
 
-        // 高亮电脑选择的卡
-        if (sim == 1) {
-            btnSim1.setBackgroundColor(ContextCompat.getColor(this, R.color.gold))
-            btnSim1.setTextColor(ContextCompat.getColor(this, R.color.dark_bg))
-        } else {
-            btnSim2.setBackgroundColor(ContextCompat.getColor(this, R.color.gold))
-            btnSim2.setTextColor(ContextCompat.getColor(this, R.color.dark_bg))
-        }
-
-        btnSim1.setOnClickListener {
-            makeCall(number, 1)
-            finish()
-        }
-
-        btnSim2.setOnClickListener {
-            makeCall(number, 2)
+        // 直接拨号（使用电脑选择的SIM卡）
+        btnDial.setOnClickListener {
+            makeCall(number, sim)
             finish()
         }
 
@@ -80,30 +67,38 @@ class DialConfirmActivity : AppCompatActivity() {
         }
 
         try {
-            if (simSlot == 2) {
-                val telecomManager = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                @Suppress("DEPRECATION")
-                val phoneAccounts = telecomManager.callCapablePhoneAccounts
-                if (phoneAccounts.size >= 2) {
-                    val handle = phoneAccounts[1]
+            val telecomManager = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+
+            // 尝试用 TelecomManager 精确指定 SIM 卡
+            @Suppress("DEPRECATION")
+            val phoneAccounts = telecomManager.callCapablePhoneAccounts
+            if (phoneAccounts.isNotEmpty()) {
+                val accountIndex = if (simSlot == 2 && phoneAccounts.size >= 2) 1 else 0
+                val handle = phoneAccounts[accountIndex]
+                try {
                     telecomManager.placeCall(
                         Uri.parse("tel:$number"),
                         Bundle().apply {
                             putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle)
                         }
                     )
-                    Toast.makeText(this, "SIM2 拨号 $number", Toast.LENGTH_SHORT).show()
+                    // 回报拨号结果给电脑
+                    DialService.sendDialResult(number, "ok")
                     return
+                } catch (e: Exception) {
+                    // TelecomManager 失败，fallback
                 }
             }
-            // 默认直接拨号（用系统默认SIM卡）
+
+            // fallback: 直接拨号
             val intent = Intent(Intent.ACTION_CALL).apply {
                 data = Uri.parse("tel:$number")
             }
             startActivity(intent)
-            Toast.makeText(this, "拨号 $number", Toast.LENGTH_SHORT).show()
+            DialService.sendDialResult(number, "ok")
         } catch (e: Exception) {
             Toast.makeText(this, "拨号失败: ${e.message}", Toast.LENGTH_LONG).show()
+            DialService.sendDialResult(number, "error")
         }
     }
 
@@ -111,15 +106,12 @@ class DialConfirmActivity : AppCompatActivity() {
         return when {
             number.length == 11 && number.startsWith("1") ->
                 "${number.substring(0, 3)} ${number.substring(3, 7)} ${number.substring(7)}"
-            number.length > 7 ->
-                number
+            number.length > 7 -> number
             else -> number
         }
     }
 
-    @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        // 返回键等同于取消
         finish()
     }
 }

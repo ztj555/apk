@@ -78,11 +78,12 @@ class MainActivity : AppCompatActivity() {
             // 启动服务
             startService(DialService.newIntent(this))
 
-            // 注册广播
+            // 注册广播 - 用 EXPORTED 确保能收到 Service 发来的广播
             try {
                 ContextCompat.registerReceiver(this, receiver,
                     IntentFilter("com.autodial.CONNECTION_CHANGE"),
-                    ContextCompat.RECEIVER_NOT_EXPORTED)
+                    ContextCompat.RECEIVER_EXPORTED
+                )
             } catch (_: Exception) {}
 
             // 检查当前连接状态
@@ -132,7 +133,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        try { updateConnectionUI(DialService.isConnected, null) } catch (_: Exception) {}
+        // 每次回到前台都刷新状态
+        try {
+            val connected = DialService.isConnected
+            if (connected && statusText.text.toString() != "已连接") {
+                updateConnectionUI(true, null)
+            } else if (!connected && connectionBanner.visibility == View.VISIBLE) {
+                updateConnectionUI(false, null)
+            }
+        } catch (_: Exception) {}
     }
 
     override fun onDestroy() {
