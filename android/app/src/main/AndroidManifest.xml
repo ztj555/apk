@@ -34,8 +34,7 @@
 
         <service
             android:name=".DialService"
-            android:exported="false"
-            android:foregroundServiceType="phoneCall" />
+            android:exported="false" />
 
         <receiver
             android:name=".BootReceiver"

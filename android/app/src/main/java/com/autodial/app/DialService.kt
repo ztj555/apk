@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.telecom.TelecomManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -54,6 +55,7 @@ class DialService : Service() {
     private var lastPin = ""
     private var lastIp = ""
     private var manualConnecting = false
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // ==================== 生命周期 ====================
 
@@ -63,6 +65,13 @@ class DialService : Service() {
             isRunning = true
             createNotificationChannel()
             startForeground(NOTIFICATION_ID, buildNotification("AutoDial 运行中"))
+
+            // 保持CPU唤醒，防止MIUI杀掉后台WebSocket连接
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "autodial:wake").apply {
+                setReferenceCounted(false)
+                acquire(12 * 60 * 60 * 1000L) // 12小时后自动释放
+            }
 
             val prefs = getSharedPreferences("autodial", MODE_PRIVATE)
             lastIp = prefs.getString("ip", "") ?: ""
@@ -114,7 +123,7 @@ class DialService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        try { disconnect(); handler.removeCallbacksAndMessages(null); isRunning = false; isConnected = false } catch (_: Exception) {}
+        try { disconnect(); handler.removeCallbacksAndMessages(null); isRunning = false; isConnected = false; wakeLock?.release(); wakeLock = null } catch (_: Exception) {}
     }
 
     // ==================== WebSocket 连接 ====================
