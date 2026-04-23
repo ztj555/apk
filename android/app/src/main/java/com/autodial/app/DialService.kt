@@ -35,7 +35,6 @@ class DialService : Service() {
     private val client = OkHttpClient.Builder()
         .pingInterval(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
-        .reconnectOnWebsocketFailure(true)
         .build()
     private val gson = Gson()
     private val handler = Handler(Looper.getMainLooper())
