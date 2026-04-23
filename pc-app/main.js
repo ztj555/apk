@@ -51,9 +51,10 @@ const PORT = 35432; // 固定端口，避免冲突
 
 // ==================== 读取UI文件 ====================
 function getUIPath(filename) {
-  // pkg打包后资源路径处理
   if (process.pkg) {
-    return path.join(path.dirname(process.execPath), 'ui', filename);
+    // pkg 打包后，__dirname 指向 snapshot 虚拟文件系统
+    const snapshotPath = path.join(__dirname, 'ui', filename);
+    return snapshotPath;
   }
   return path.join(__dirname, 'ui', filename);
 }
