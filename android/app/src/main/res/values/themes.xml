@@ -1,11 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 主主题：暗色 -->
     <style name="Theme.AutoDial" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/accent</item>
-        <item name="colorPrimaryVariant">@color/bg_primary</item>
-        <item name="colorOnPrimary">@color/bg_primary</item>
-        <item name="android:windowBackground">@color/bg_primary</item>
-        <item name="android:statusBarColor">@color/bg_primary</item>
-        <item name="android:navigationBarColor">@color/bg_primary</item>
+        <item name="colorPrimary">#C9A84C</item>
+        <item name="colorPrimaryDark">#111318</item>
+        <item name="colorAccent">#F0C040</item>
+        <item name="android:windowBackground">#111318</item>
+        <item name="android:statusBarColor">#111318</item>
+        <item name="android:navigationBarColor">#111318</item>
+    </style>
+
+    <!-- 拨号确认弹窗主题 -->
+    <style name="Theme.AutoDial.Dialog" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowBackground">#111318</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorBackground">#111318</item>
+        <item name="android:statusBarColor">#111318</item>
+        <item name="android:navigationBarColor">#111318</item>
     </style>
 </resources>

@@ -1,0 +1,23 @@
+{
+  "name": "autodial-pc",
+  "version": "2.0.0",
+  "description": "AutoDial 电脑端 - 一键拨号",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js",
+    "build-win": "pkg main.js --target node18-win-x64 --output AutoDial-PC.exe --compress GZip"
+  },
+  "bin": "main.js",
+  "pkg": {
+    "assets": ["ui/**/*"],
+    "targets": ["node18-win-x64"]
+  },
+  "dependencies": {
+    "ws": "^8.17.0",
+    "node-os-utils": "^1.3.7",
+    "open": "^8.4.2"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}

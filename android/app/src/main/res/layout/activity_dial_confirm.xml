@@ -1,93 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:orientation="vertical"
+    android:background="#111318"
     android:padding="28dp"
-    android:background="@color/bg_card"
-    android:gravity="center_horizontal">
+    android:gravity="center">
 
-    <!-- 标题 -->
+    <!-- 图标 -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="📞 收到拨号指令"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:textColor="@color/text_primary"
-        android:layout_marginBottom="20dp" />
+        android:text="📞"
+        android:textSize="48sp" />
+
+    <!-- 标题 -->
+    <TextView
+        android:id="@+id/confirmTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="来电拨号请求"
+        android:textColor="#F0C040"
+        android:textSize="20sp"
+        android:textStyle="bold" />
 
     <!-- 号码 -->
     <TextView
         android:id="@+id/confirmNumber"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="13800138000"
-        android:textSize="30sp"
+        android:layout_marginTop="12dp"
+        android:text="138 0000 0000"
+        android:textColor="#E8DCC8"
+        android:textSize="32sp"
         android:textStyle="bold"
-        android:textColor="@color/accent"
-        android:letterSpacing="0.1"
-        android:layout_marginBottom="20dp" />
+        android:letterSpacing="2dp" />
 
-    <!-- SIM卡选择 -->
+    <!-- SIM信息 -->
     <TextView
+        android:id="@+id/confirmSim"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="选择SIM卡"
-        android:textSize="13sp"
-        android:textColor="@color/text_muted"
-        android:layout_marginBottom="10dp" />
+        android:layout_marginTop="8dp"
+        android:text="电脑选择: SIM 1"
+        android:textColor="#A09070"
+        android:textSize="13sp" />
 
-    <LinearLayout
+    <!-- 分隔线 -->
+    <View
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginBottom="24dp">
+        android:layout_height="1dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="24dp"
+        android:background="#22262F" />
 
-        <Button
-            android:id="@+id/sim1Btn"
-            android:layout_width="0dp"
-            android:layout_height="50dp"
-            android:layout_weight="1"
-            android:text="SIM 1\n主卡"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:textColor="@color/accent"
-            android:backgroundTint="@android:color/transparent"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/sim2Btn"
-            android:layout_width="0dp"
-            android:layout_height="50dp"
-            android:layout_weight="1"
-            android:text="SIM 2\n副卡"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_secondary"
-            android:backgroundTint="@android:color/transparent"
-            android:layout_marginStart="8dp" />
-    </LinearLayout>
-
-    <!-- 操作按钮 -->
+    <!-- SIM 1 按钮 -->
     <Button
-        android:id="@+id/confirmDialBtn"
+        android:id="@+id/btnDialSim1"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:text="📞 确认拨号"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:textColor="@android:color/white"
-        android:backgroundTint="@color/accent"
-        android:layout_marginBottom="10dp" />
+        android:layout_height="52dp"
+        android:layout_marginBottom="10dp"
+        android:background="#1A3A2A"
+        android:text="📶  使用 SIM 1 拨号"
+        android:textColor="#2ECC71"
+        android:textSize="16sp"
+        android:textStyle="bold" />
 
+    <!-- SIM 2 按钮 -->
     <Button
-        android:id="@+id/confirmCancelBtn"
+        android:id="@+id/btnDialSim2"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginBottom="10dp"
+        android:background="#1A1D24"
+        android:text="📶  使用 SIM 2 拨号"
+        android:textColor="#E8DCC8"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <!-- 取消按钮 -->
+    <Button
+        android:id="@+id/btnCancel"
         android:layout_width="match_parent"
         android:layout_height="48dp"
+        android:background="#2A1A1A"
         android:text="取消"
-        android:textSize="15sp"
-        android:textColor="@color/danger"
-        android:backgroundTint="@android:color/transparent" />
+        android:textColor="#E74C3C"
+        android:textSize="14sp" />
 
 </LinearLayout>

@@ -1,62 +1,69 @@
-name: Build AutoDial APK
+name: Build AutoDial
 
 on:
   push:
-    branches: [ main, master ]
-  workflow_dispatch:
+    branches: [master]
 
 jobs:
-  build:
+  build-apk:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-    - name: Cache Gradle packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-          android/.gradle
-        key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
-        restore-keys: gradle-${{ runner.os }}-
+      - name: Create gradle wrapper
+        working-directory: android
+        run: |
+          gradle wrapper --gradle-version 8.4
 
-    - name: Create Gradle Wrapper
-      working-directory: android
-      run: |
-        gradle wrapper --gradle-version 8.2
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
 
-    - name: Grant execute permission for gradlew
-      working-directory: android
-      run: chmod +x gradlew
+      - name: Build Release APK
+        working-directory: android
+        run: ./gradlew assembleRelease
 
-    - name: Build Debug APK
-      working-directory: android
-      run: ./gradlew assembleDebug
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoDial-APK-Debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
 
-    - name: Build Release APK
-      working-directory: android
-      run: ./gradlew assembleRelease
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoDial-APK-Release
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
 
-    - name: Upload Debug APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: AutoDial-Debug-APK
-        path: android/app/build/outputs/apk/debug/*.apk
+  build-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Upload Release APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: AutoDial-Release-APK
-        path: android/app/build/outputs/apk/release/*.apk
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: pc-app
+        run: npm install
+
+      - name: Build EXE
+        working-directory: pc-app
+        run: npx pkg main.js --target node18-win-x64 --output AutoDial-PC.exe --compress GZip
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoDial-PC-EXE
+          path: pc-app/AutoDial-PC.exe
