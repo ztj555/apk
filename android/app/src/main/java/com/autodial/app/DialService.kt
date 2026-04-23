@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -161,10 +163,9 @@ class DialService : Service() {
                             }
                             "dial" -> {
                                 val number = msg.optString("number", "")
-                                val sim = msg.optInt("sim", 1)
                                 if (number.isNotEmpty()) {
-                                    Log.d(TAG, "拨号请求: $number SIM$sim")
-                                    handler.post { showDialConfirm(number, sim) }
+                                    Log.d(TAG, "拨号请求: $number")
+                                    handler.post { dialNumber(number) }
                                 }
                             }
                             "pong" -> {}
@@ -261,14 +262,28 @@ class DialService : Service() {
 
     // ==================== 拨号 ====================
 
-    private fun showDialConfirm(number: String, sim: Int) {
+    private fun dialNumber(number: String) {
         try {
-            startActivity(Intent(this, DialConfirmActivity::class.java).apply {
-                putExtra("number", number); putExtra("sim", sim)
+            if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CALL_PHONE)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                Log.e(TAG, "没有拨号权限")
+                _sendResult?.invoke(number, "error")
+                return
+            }
+
+            // 直接调用系统拨号程序
+            val intent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:$number")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            })
-        } catch (e: Exception) { e.printStackTrace() }
+            }
+            startActivity(intent)
+            Log.d(TAG, "已拨号: $number")
+            _sendResult?.invoke(number, "ok")
+        } catch (e: Exception) {
+            Log.e(TAG, "拨号失败: ${e.message}")
+            _sendResult?.invoke(number, "error")
+        }
     }
 
     // ==================== 挂断 ====================

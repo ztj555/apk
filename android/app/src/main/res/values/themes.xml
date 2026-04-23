@@ -9,14 +9,4 @@
         <item name="android:statusBarColor">#111318</item>
         <item name="android:navigationBarColor">#111318</item>
     </style>
-
-    <!-- 拨号确认弹窗主题 -->
-    <style name="Theme.AutoDial.Dialog" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="android:windowIsFloating">false</item>
-        <item name="android:windowBackground">#111318</item>
-        <item name="android:windowNoTitle">true</item>
-        <item name="android:colorBackground">#111318</item>
-        <item name="android:statusBarColor">#111318</item>
-        <item name="android:navigationBarColor">#111318</item>
-    </style>
 </resources>

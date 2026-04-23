@@ -284,28 +284,6 @@ const HTML_CONTENT = `<!DOCTYPE html>
   }
   .dial-btn.del { color: var(--red); }
   .dial-btn.del .num { font-size: 20px; }
-  .sim-select {
-    display: flex;
-    gap: 10px;
-  }
-  .sim-btn {
-    flex: 1;
-    padding: 10px;
-    background: var(--bg2);
-    border: 2px solid var(--bg3);
-    border-radius: 10px;
-    color: var(--text2);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
-  }
-  .sim-btn.active {
-    background: rgba(201,168,76,0.1);
-    border-color: var(--gold);
-    color: var(--gold-light);
-  }
   .call-btn {
     width: 100%;
     padding: 18px;
@@ -504,10 +482,6 @@ const HTML_CONTENT = `<!DOCTYPE html>
       <button class="dial-btn" onclick="pressKey('0')"><span class="num">0</span><span class="sub">+</span></button>
       <button class="dial-btn del" onclick="deleteLast()"><span class="num">&#x232B;</span></button>
     </div>
-    <div class="sim-select">
-      <button class="sim-btn active" id="sim1Btn" onclick="selectSim(1)">&#x1F4F6; SIM 1</button>
-      <button class="sim-btn" id="sim2Btn" onclick="selectSim(2)">&#x1F4F6; SIM 2</button>
-    </div>
     <button class="call-btn" id="callBtn" onclick="dial()" disabled>
       &#x1F4DE; &nbsp;拨号
     </button>
@@ -532,7 +506,6 @@ const HTML_CONTENT = `<!DOCTYPE html>
 <script>
 let ws = null;
 let isConnected = false;
-let selectedSim = 1;
 let reconnectTimer = null;
 
 function connect() {
@@ -616,19 +589,13 @@ function clearNumber() {
   document.getElementById('numberInput').value = '';
 }
 
-function selectSim(sim) {
-  selectedSim = sim;
-  document.getElementById('sim1Btn').className = sim === 1 ? 'sim-btn active' : 'sim-btn';
-  document.getElementById('sim2Btn').className = sim === 2 ? 'sim-btn active' : 'sim-btn';
-}
-
 function dial() {
   const number = document.getElementById('numberInput').value.trim().replace(/\\s/g, '');
   if (!number) { showToast('请输入号码', 'error'); return; }
   if (!isConnected) { showToast('手机未连接', 'error'); return; }
   if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('服务连接异常', 'error'); return; }
-  ws.send(JSON.stringify({ type: 'dial', number: number, sim: selectedSim }));
-  addLog('info', '&#x1F4E4; 发送拨号: ' + number + ' (SIM' + selectedSim + ')');
+  ws.send(JSON.stringify({ type: 'dial', number: number }));
+  addLog('info', '&#x1F4E4; 发送拨号: ' + number);
 }
 
 function hangup() {
@@ -869,10 +836,9 @@ wss.on('connection', (ws, req) => {
         }
         phoneSocket.send(JSON.stringify({
           type: 'dial',
-          number: msg.number,
-          sim: msg.sim || 1
+          number: msg.number
         }));
-        console.log('[拨号] ' + msg.number + ' (SIM' + (msg.sim || 1) + ')');
+        console.log('[拨号] ' + msg.number);
         ws.send(JSON.stringify({ type: 'dial_sent', number: msg.number }));
         return;
       }
