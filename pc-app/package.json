@@ -1,6 +1,6 @@
 {
   "name": "autodial-pc",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "AutoDial 电脑端 - 一键拨号",
   "main": "main.js",
   "scripts": {
@@ -9,13 +9,11 @@
   },
   "bin": "main.js",
   "pkg": {
-    "assets": ["ui/**/*"],
+    "assets": [],
     "targets": ["node18-win-x64"]
   },
   "dependencies": {
-    "ws": "^8.17.0",
-    "node-os-utils": "^1.3.7",
-    "open": "^8.4.2"
+    "ws": "^8.17.0"
   },
   "devDependencies": {
     "pkg": "^5.8.1"
