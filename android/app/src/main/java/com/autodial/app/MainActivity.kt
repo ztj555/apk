@@ -412,6 +412,18 @@ class MainActivity : AppCompatActivity() {
                         statusText.setTextColor(Color.parseColor("#E74C3C"))
                         Toast.makeText(this, "有其他手机连接了该电脑", Toast.LENGTH_LONG).show()
                     }
+                    "connection_failed" -> {
+                        statusText.text = "连接失败"
+                        statusText.setTextColor(Color.parseColor("#E74C3C"))
+                        Toast.makeText(this, "无法连接到电脑，请检查：\n1. 电脑端是否已打开\n2. 手机和电脑是否在同一WiFi\n3. 电脑防火墙是否放行了端口", Toast.LENGTH_LONG).show()
+                        discoveryHint.text = "⚠️ 连接失败，请检查电脑端是否已打开且在同一网络"
+                        discoveryHint.visibility = View.VISIBLE
+                    }
+                    "disconnected" -> {
+                        statusText.text = "连接已断开"
+                        statusText.setTextColor(Color.parseColor("#E67E22"))
+                        Toast.makeText(this, "与电脑的连接已断开", Toast.LENGTH_SHORT).show()
+                    }
                     else -> {
                         statusText.text = "未连接"
                         statusText.setTextColor(Color.parseColor("#A09070"))

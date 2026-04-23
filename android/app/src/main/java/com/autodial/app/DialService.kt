@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import okhttp3.*
 import org.json.JSONObject
@@ -15,6 +16,7 @@ import java.util.concurrent.TimeUnit
 class DialService : Service() {
 
     companion object {
+        private const val TAG = "DialService"
         private const val CHANNEL_ID = "autodial_service"
         private const val NOTIFICATION_ID = 1001
 
@@ -30,6 +32,7 @@ class DialService : Service() {
 
     private var webSocket: WebSocket? = null
     private val client = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)     // 连接超时5秒，快速失败
         .pingInterval(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
@@ -37,6 +40,7 @@ class DialService : Service() {
     private var reconnectRunnable: Runnable? = null
     private var lastPin = ""
     private var lastIp = ""
+    private var manualConnecting = false  // 标记是否用户手动发起的连接
 
     // ==================== 生命周期 ====================
 
@@ -51,11 +55,15 @@ class DialService : Service() {
             lastIp = prefs.getString("ip", "") ?: ""
             lastPin = prefs.getString("pin", "") ?: ""
             serverAddress = lastIp
-            if (lastIp.isNotEmpty() && lastPin.isNotEmpty()) {
-                connectToServer(lastIp, lastPin)
+            // 不在 onCreate 自动连接了，等用户手动点连接
+            // 如果之前是已连接状态，可以尝试重连
+            val wasConnected = prefs.getBoolean("was_connected", false)
+            if (wasConnected && lastIp.isNotEmpty() && lastPin.isNotEmpty()) {
+                Log.d(TAG, "上次已连接，自动重连到 $lastIp")
+                updateNotification("自动重连中...")
+                connectToServer(lastIp, lastPin, isAutoReconnect = true)
             }
         } catch (e: Exception) {
-            // Android 14 没有通知权限时可能抛异常，降级处理
             isRunning = true
             createNotificationChannel()
             try {
@@ -75,14 +83,23 @@ class DialService : Service() {
                         lastIp = ip
                         lastPin = pin
                         serverAddress = ip
+                        manualConnecting = true
                         getSharedPreferences("autodial", MODE_PRIVATE).edit()
                             .putString("ip", ip)
                             .putString("pin", pin)
                             .apply()
-                        connectToServer(ip, pin)
+                        // 取消自动重连
+                        cancelReconnect()
+                        connectToServer(ip, pin, isAutoReconnect = false)
                     }
                 }
-                "DISCONNECT" -> disconnect()
+                "DISCONNECT" -> {
+                    manualConnecting = false
+                    disconnect()
+                    getSharedPreferences("autodial", MODE_PRIVATE).edit()
+                        .putBoolean("was_connected", false)
+                        .apply()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -104,18 +121,23 @@ class DialService : Service() {
 
     // ==================== WebSocket 连接 ====================
 
-    private fun connectToServer(ip: String, pin: String) {
+    private fun connectToServer(ip: String, pin: String, isAutoReconnect: Boolean = false) {
         try {
-            webSocket?.close(1000, "reconnect")
-            handler.removeCallbacks(reconnectRunnable ?: return)
+            // 先彻底关闭旧的
             reconnectRunnable = null
+            try {
+                webSocket?.cancel()  // cancel 比 close 更彻底，不会触发正常的 onClose
+            } catch (_: Exception) {}
+            webSocket = null
 
             val url = "ws://$ip:35432"
             updateNotification("正在连接 $ip ...")
+            Log.d(TAG, "连接到 $url (自动重连=$isAutoReconnect)")
 
             val request = Request.Builder().url(url).build()
             webSocket = client.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
+                    Log.d(TAG, "WebSocket 已打开，发送 phone_hello")
                     try {
                         val msg = JSONObject().apply {
                             put("type", "phone_hello")
@@ -123,6 +145,7 @@ class DialService : Service() {
                         }
                         webSocket.send(msg.toString())
                     } catch (e: Exception) {
+                        Log.e(TAG, "发送 phone_hello 失败: ${e.message}")
                         e.printStackTrace()
                     }
                 }
@@ -130,18 +153,26 @@ class DialService : Service() {
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     try {
                         val msg = JSONObject(text)
+                        Log.d(TAG, "收到消息: ${msg.optString("type")}")
                         when (msg.optString("type", "")) {
                             "auth_ok" -> {
+                                Log.d(TAG, "配对成功！")
                                 isConnected = true
+                                manualConnecting = false
                                 handler.post {
                                     updateNotification("已连接到电脑")
+                                    getSharedPreferences("autodial", MODE_PRIVATE).edit()
+                                        .putBoolean("was_connected", true)
+                                        .apply()
                                     sendBroadcast(Intent("com.autodial.CONNECTION_CHANGE").apply {
                                         putExtra("connected", true)
                                     })
                                 }
                             }
                             "auth_fail" -> {
+                                Log.w(TAG, "配对码错误")
                                 isConnected = false
+                                manualConnecting = false
                                 handler.post {
                                     updateNotification("配对码错误，请检查")
                                     sendBroadcast(Intent("com.autodial.CONNECTION_CHANGE").apply {
@@ -160,7 +191,9 @@ class DialService : Service() {
                             }
                             "pong" -> {}
                             "kicked" -> {
+                                Log.w(TAG, "被踢下线")
                                 isConnected = false
+                                manualConnecting = false
                                 handler.post {
                                     updateNotification("已被踢下线")
                                     sendBroadcast(Intent("com.autodial.CONNECTION_CHANGE").apply {
@@ -171,6 +204,7 @@ class DialService : Service() {
                             }
                         }
                     } catch (e: Exception) {
+                        Log.e(TAG, "处理消息失败: ${e.message}")
                         e.printStackTrace()
                     }
                 }
@@ -180,18 +214,39 @@ class DialService : Service() {
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    Log.d(TAG, "WebSocket 已关闭 code=$code reason=$reason")
                     onDisconnected()
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    Log.e(TAG, "WebSocket 连接失败: ${t.message}")
                     onDisconnected()
-                    scheduleReconnect()
+                    // 通知 UI 连接失败
+                    handler.post {
+                        sendBroadcast(Intent("com.autodial.CONNECTION_CHANGE").apply {
+                            putExtra("connected", false)
+                            putExtra("reason", "connection_failed")
+                        })
+                    }
+                    // 只有自动重连模式才自动重试，手动连接失败不自动重试
+                    if (isAutoReconnect && !manualConnecting) {
+                        scheduleReconnect()
+                    } else {
+                        manualConnecting = false
+                    }
                 }
             })
         } catch (e: Exception) {
+            Log.e(TAG, "创建连接失败: ${e.message}")
             e.printStackTrace()
             updateNotification("连接失败")
-            scheduleReconnect()
+            // 通知 UI
+            handler.post {
+                sendBroadcast(Intent("com.autodial.CONNECTION_CHANGE").apply {
+                    putExtra("connected", false)
+                    putExtra("reason", "connection_failed")
+                })
+            }
         }
     }
 
@@ -203,6 +258,7 @@ class DialService : Service() {
                     updateNotification("连接已断开")
                     sendBroadcast(Intent("com.autodial.CONNECTION_CHANGE").apply {
                         putExtra("connected", false)
+                        putExtra("reason", "disconnected")
                     })
                 }
             }
@@ -211,21 +267,31 @@ class DialService : Service() {
 
     private fun scheduleReconnect() {
         try {
-            handler.removeCallbacks(reconnectRunnable ?: return)
+            cancelReconnect()
             reconnectRunnable = Runnable {
-                if (lastIp.isNotEmpty() && lastPin.isNotEmpty() && !isConnected) {
-                    connectToServer(lastIp, lastPin)
+                if (lastIp.isNotEmpty() && lastPin.isNotEmpty() && !isConnected && !manualConnecting) {
+                    Log.d(TAG, "自动重连到 $lastIp")
+                    connectToServer(lastIp, lastPin, isAutoReconnect = true)
                 }
             }
             handler.postDelayed(reconnectRunnable!!, 5000)
         } catch (_: Exception) {}
     }
 
+    private fun cancelReconnect() {
+        try {
+            reconnectRunnable?.let {
+                handler.removeCallbacks(it)
+            }
+            reconnectRunnable = null
+        } catch (_: Exception) {}
+    }
+
     private fun disconnect() {
         try {
-            handler.removeCallbacks(reconnectRunnable ?: return)
-            reconnectRunnable = null
-            webSocket?.close(1000, "user_disconnect")
+            cancelReconnect()
+            manualConnecting = false
+            try { webSocket?.cancel() } catch (_: Exception) {}
             webSocket = null
             isConnected = false
             updateNotification("AutoDial 运行中")

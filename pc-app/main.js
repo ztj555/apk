@@ -536,6 +536,10 @@ function loadInfo() {
       document.getElementById('localIP').textContent = info.ip;
       document.getElementById('pinCode').textContent = info.pin;
       if (info.connected) setPhoneConnected(true, null);
+      // 防火墙警告
+      if (info.firewall === 'warning') {
+        addLog('error', '&#x1F534; 防火墙可能拦截了连接，请以管理员身份运行本程序一次');
+      }
     })
     .catch(() => setTimeout(loadInfo, 1000));
 }
@@ -772,7 +776,8 @@ const server = http.createServer((req, res) => {
       ip: LOCAL_IP,
       port: PORT,
       connected: phoneSocket !== null,
-      hostname: os.hostname()
+      hostname: os.hostname(),
+      firewall: firewallWarning ? 'warning' : 'ok'
     }));
     return;
   }
@@ -880,25 +885,38 @@ function notifyUIDialResult(result) {
   });
 }
 
-// ==================== 防火墙规则 ====================
-function addFirewallRule() {
-  try {
-    // 尝试添加防火墙入站规则，允许手机连接
-    execSync(
-      'netsh advfirewall firewall show rule name="AutoDial" >nul 2>&1 || ' +
-      'netsh advfirewall firewall add rule name="AutoDial" dir=in action=allow protocol=TCP localport=' + PORT + ' profile=any',
-      { stdio: 'ignore' }
-    );
-    execSync(
-      'netsh advfirewall firewall show rule name="AutoDial UDP" >nul 2>&1 || ' +
-      'netsh advfirewall firewall add rule name="AutoDial UDP" dir=in action=allow protocol=UDP localport=' + DISCOVERY_PORT + ' profile=any',
-      { stdio: 'ignore' }
-    );
-    console.log('[防火墙] 已添加入站规则 (TCP:' + PORT + ', UDP:' + DISCOVERY_PORT + ')');
-  } catch (e) {
-    console.log('[防火墙] 自动添加规则失败（可能需要管理员权限），如连接失败请手动开放端口 ' + PORT);
-  }
+// ==================== 防火墙检查 ====================
+function checkFirewall() {
+  return new Promise((resolve) => {
+    exec('netsh advfirewall firewall show rule name="AutoDial"', (err, stdout) => {
+      if (stdout && stdout.includes('AutoDial') && stdout.includes('35432')) {
+        resolve(true); // 规则已存在
+      } else {
+        resolve(false); // 没有规则
+      }
+    });
+  });
 }
+
+// 启动时静默尝试添加防火墙规则
+function tryAddFirewallRule() {
+  exec(
+    'netsh advfirewall firewall add rule name="AutoDial" dir=in action=allow protocol=TCP localport=' + PORT + ' profile=any description=AutoDial一键拨号 2>nul & ' +
+    'netsh advfirewall firewall add rule name="AutoDial UDP" dir=in action=allow protocol=UDP localport=' + DISCOVERY_PORT + ' profile=any description=AutoDial一键拨号 2>nul',
+    (err) => {
+      if (err) {
+        console.log('[防火墙] 自动添加失败（需要管理员权限）');
+        firewallWarning = true;
+      } else {
+        console.log('[防火墙] 入站规则已添加');
+        checkFirewall().then(ok => { if (!ok) firewallWarning = true; });
+      }
+    }
+  );
+}
+
+let firewallWarning = false;
+tryAddFirewallRule();
 
 // ==================== 启动服务器 ====================
 server.on('error', (err) => {
@@ -908,8 +926,6 @@ server.on('error', (err) => {
     process.exit(1);
   }
 });
-
-addFirewallRule();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');
