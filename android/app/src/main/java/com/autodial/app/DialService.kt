@@ -54,6 +54,7 @@ class DialService : Service() {
     private var lastPin = ""
     private var lastIp = ""
     private var manualConnecting = false
+    private var reconnectAttempts = 0
 
     // ==================== 生命周期 ====================
 
@@ -147,6 +148,7 @@ class DialService : Service() {
                             "auth_ok" -> {
                                 Log.d(TAG, "配对成功")
                                 isConnected = true; manualConnecting = false
+                                reconnectAttempts = 0
                                 handler.post {
                                     updateNotification("已连接到电脑")
                                     getSharedPreferences("autodial", MODE_PRIVATE).edit()
@@ -190,8 +192,11 @@ class DialService : Service() {
                 }
 
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                    Log.d(TAG, "关闭 code=$code")
+                    Log.d(TAG, "关闭 code=$code reason=$reason")
                     onDisconnected()
+                    // WiFi切换等原因导致的断开会走onClosed，也需要重连
+                    handler.post { notifyConnectionChange(false, "disconnected") }
+                    scheduleReconnect()
                 }
 
                 override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
@@ -228,13 +233,17 @@ class DialService : Service() {
 
     private fun scheduleReconnect() {
         cancelReconnect()
+        // 递增重连: 3s → 6s → 12s → 12s ...
+        val delay = if (reconnectAttempts == 0) 3000L else minOf(3000L * (1 shl reconnectAttempts), 12000L)
+        reconnectAttempts++
+        Log.d(TAG, "将在${delay/1000}秒后重连 (第${reconnectAttempts}次)")
         reconnectRunnable = Runnable {
             if (lastIp.isNotEmpty() && lastPin.isNotEmpty() && !isConnected) {
                 Log.d(TAG, "自动重连到 $lastIp")
                 connectToServer(lastIp, lastPin, isAutoReconnect = true)
             }
         }
-        handler.postDelayed(reconnectRunnable!!, 3000)
+        handler.postDelayed(reconnectRunnable!!, delay)
     }
 
     private fun cancelReconnect() {
