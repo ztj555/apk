@@ -35,7 +35,7 @@
         android:textColor="#E8DCC8"
         android:textSize="32sp"
         android:textStyle="bold"
-        android:letterSpacing="2dp" />
+        android:letterSpacing="0.05" />
 
     <!-- SIM信息 -->
     <TextView
