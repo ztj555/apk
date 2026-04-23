@@ -324,9 +324,18 @@ class MainActivity : AppCompatActivity() {
     private fun doConnect(ip: String, pin: String) {
         pinInput.isEnabled = false
         connectBtn.isEnabled = false
-        statusText.text = "正在连接..."
+        statusText.text = "正在连接 $ip ..."
         statusText.setTextColor(Color.parseColor("#F0C040"))
         statusDot.setImageResource(R.drawable.dot_gray)
+
+        // 3秒后如果还没连上，给个提示
+        CoroutineScope(Dispatchers.Main).launch {
+            delay(3000)
+            if (!DialService.isConnected) {
+                statusText.text = "连接中，请稍候...（若长时间连不上，可能是电脑防火墙拦截）"
+                statusText.setTextColor(Color.parseColor("#E67E22"))
+            }
+        }
 
         val intent = Intent(this, DialService::class.java).apply {
             action = "CONNECT"
@@ -335,9 +344,10 @@ class MainActivity : AppCompatActivity() {
         }
         startService(intent)
 
-        // 保存配对码
+        // 保存配对码和IP
         getSharedPreferences("autodial", MODE_PRIVATE).edit()
             .putString("pin", pin)
+            .putString("ip", ip)
             .apply()
     }
 

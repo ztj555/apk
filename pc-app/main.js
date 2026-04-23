@@ -880,6 +880,26 @@ function notifyUIDialResult(result) {
   });
 }
 
+// ==================== 防火墙规则 ====================
+function addFirewallRule() {
+  try {
+    // 尝试添加防火墙入站规则，允许手机连接
+    execSync(
+      'netsh advfirewall firewall show rule name="AutoDial" >nul 2>&1 || ' +
+      'netsh advfirewall firewall add rule name="AutoDial" dir=in action=allow protocol=TCP localport=' + PORT + ' profile=any',
+      { stdio: 'ignore' }
+    );
+    execSync(
+      'netsh advfirewall firewall show rule name="AutoDial UDP" >nul 2>&1 || ' +
+      'netsh advfirewall firewall add rule name="AutoDial UDP" dir=in action=allow protocol=UDP localport=' + DISCOVERY_PORT + ' profile=any',
+      { stdio: 'ignore' }
+    );
+    console.log('[防火墙] 已添加入站规则 (TCP:' + PORT + ', UDP:' + DISCOVERY_PORT + ')');
+  } catch (e) {
+    console.log('[防火墙] 自动添加规则失败（可能需要管理员权限），如连接失败请手动开放端口 ' + PORT);
+  }
+}
+
 // ==================== 启动服务器 ====================
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
@@ -888,6 +908,8 @@ server.on('error', (err) => {
     process.exit(1);
   }
 });
+
+addFirewallRule();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');
