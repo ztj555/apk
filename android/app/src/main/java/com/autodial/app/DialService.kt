@@ -272,14 +272,36 @@ class DialService : Service() {
                 return
             }
 
-            // 直接调用系统拨号程序
-            val intent = Intent(Intent.ACTION_CALL).apply {
-                data = Uri.parse("tel:$number")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val telecomManager = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+
+            // 用 TelecomManager.placeCall() 直接拨号（不指定SIM卡，用系统默认）
+            // 这样不会弹SIM选择框，且不需要启动Activity（MIUI不会拦截）
+            val uri = Uri.parse("tel:$number")
+            val extras = Bundle()
+            try {
+                telecomManager.placeCall(uri, extras)
+                Log.d(TAG, "已拨号(TelecomManager): $number")
+                _sendResult?.invoke(number, "ok")
+                return
+            } catch (e: SecurityException) {
+                Log.e(TAG, "TelecomManager无权限: ${e.message}")
+            } catch (e: Exception) {
+                Log.e(TAG, "TelecomManager拨号失败: ${e.message}, 尝试ACTION_CALL")
             }
-            startActivity(intent)
-            Log.d(TAG, "已拨号: $number")
-            _sendResult?.invoke(number, "ok")
+
+            // fallback: ACTION_CALL
+            try {
+                val intent = Intent(Intent.ACTION_CALL).apply {
+                    data = uri
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
+                Log.d(TAG, "已拨号(ACTION_CALL): $number")
+                _sendResult?.invoke(number, "ok")
+            } catch (e: Exception) {
+                Log.e(TAG, "ACTION_CALL也失败: ${e.message}")
+                _sendResult?.invoke(number, "error")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "拨号失败: ${e.message}")
             _sendResult?.invoke(number, "error")
