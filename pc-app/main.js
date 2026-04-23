@@ -2,10 +2,11 @@
 
 const http = require('http');
 const WebSocket = require('ws');
+const dgram = require('dgram');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const crypto = require('crypto');
 
 // ==================== 内嵌 HTML ====================
@@ -492,7 +493,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <div class="log-list" id="logList">
       <div class="log-item info">
         <div class="log-time">提示</div>
-        <div class="log-msg">请用手机输入配对码连接</div>
+        <div class="log-msg">手机输入配对码即可自动连接</div>
       </div>
     </div>
   </div>
@@ -550,7 +551,7 @@ function setPhoneConnected(connected, phoneIP) {
     text.textContent = phoneIP ? '已连接 ' + phoneIP : '手机已连接';
     banner.className = 'connect-banner show';
     callBtn.disabled = false;
-    addLog('success', '&#x2705; 手机连接成功' + (phoneIP ? ' \u00B7 ' + phoneIP : ''));
+    addLog('success', '&#x2705; 手机连接成功' + (phoneIP ? ' \\u00B7 ' + phoneIP : ''));
     showToast('手机已连接！可以开始拨号了', 'success');
   } else {
     badge.className = 'status-badge disconnected';
@@ -700,11 +701,66 @@ function getLocalIP() {
   return preferred ? preferred.address : (candidates[0] ? candidates[0].address : '127.0.0.1');
 }
 
+// ==================== 获取子网网段 ====================
+function getSubnet() {
+  const ip = getLocalIP();
+  const parts = ip.split('.');
+  return parts[0] + '.' + parts[1] + '.' + parts[2] + '.';
+}
+
 const PIN_CODE = generatePinCode();
 const LOCAL_IP = getLocalIP();
+const SUBNET = getSubnet();
 const PORT = 35432;
+const DISCOVERY_PORT = 35433;
 
-// ==================== HTTP 服务器（内嵌HTML，无需外部文件） ====================
+// ==================== UDP 广播发现服务 ====================
+// 手机发送配对码到广播地址，电脑匹配后回复自己的IP
+const udpSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+
+udpSocket.on('error', (err) => {
+  console.error('[UDP错误]', err.message);
+});
+
+udpSocket.on('message', (msg, rinfo) => {
+  try {
+    const data = JSON.parse(msg.toString());
+    // 手机发来的发现请求
+    if (data.type === 'discover' && data.pin === PIN_CODE) {
+      const reply = JSON.stringify({
+        type: 'found',
+        pin: PIN_CODE,
+        ip: LOCAL_IP,
+        port: PORT
+      });
+      udpSocket.send(reply, rinfo.port, rinfo.address);
+      console.log('[发现] 手机 ' + rinfo.address + ' 查询配对码 ' + data.pin + '，已回复');
+    }
+  } catch (e) {}
+});
+
+udpSocket.bind(DISCOVERY_PORT, '0.0.0.0', () => {
+  udpSocket.setBroadcast(true);
+  console.log('[发现] UDP广播服务已启动，端口: ' + DISCOVERY_PORT);
+});
+
+// 定期广播自己的存在（让手机能被动发现）
+let broadcastTimer = null;
+function startBroadcast() {
+  const msg = JSON.stringify({
+    type: 'announce',
+    pin: PIN_CODE,
+    ip: LOCAL_IP,
+    port: PORT
+  });
+  broadcastTimer = setInterval(() => {
+    try {
+      udpSocket.send(msg, DISCOVERY_PORT, '255.255.255.255');
+    } catch (e) {}
+  }, 3000);
+}
+
+// ==================== HTTP 服务器 ====================
 let phoneSocket = null;
 
 const server = http.createServer((req, res) => {
@@ -842,17 +898,56 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('  配对码:   ' + PIN_CODE);
   console.log('  端口:     ' + PORT);
   console.log('========================================');
-  console.log('  浏览器: http://localhost:' + PORT);
-  console.log('========================================');
 
-  // 自动打开浏览器
+  // 启动 UDP 广播
+  startBroadcast();
+
+  // 用 Chrome/Edge App 模式打开（去掉地址栏，像桌面应用）
   const url = 'http://localhost:' + PORT;
-  if (process.platform === 'win32') {
+  let opened = false;
+
+  // 尝试 Edge App 模式
+  const edgePaths = [
+    process.env['LOCALAPPDATA'] + '\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+  ];
+  for (const edgePath of edgePaths) {
+    if (fs.existsSync(edgePath)) {
+      exec('"' + edgePath + '" --app="' + url + '" --window-size=1100,750', (err) => {
+        if (err) {
+          // Edge 失败，fallback 到默认浏览器
+          exec('start "" "' + url + '"');
+        }
+      });
+      opened = true;
+      break;
+    }
+  }
+
+  // 尝试 Chrome App 模式
+  if (!opened) {
+    const chromePaths = [
+      process.env['LOCALAPPDATA'] + '\\Google\\Chrome\\Application\\chrome.exe',
+      process.env['PROGRAMFILES'] + '\\Google\\Chrome\\Application\\chrome.exe',
+      process.env['ProgramFiles(x86)'] + '\\Google\\Chrome\\Application\\chrome.exe'
+    ];
+    for (const chromePath of chromePaths) {
+      if (fs.existsSync(chromePath)) {
+        exec('"' + chromePath + '" --app="' + url + '" --window-size=1100,750', (err) => {
+          if (err) {
+            exec('start "" "' + url + '"');
+          }
+        });
+        opened = true;
+        break;
+      }
+    }
+  }
+
+  // 最终 fallback
+  if (!opened) {
     exec('start "" "' + url + '"');
-  } else if (process.platform === 'darwin') {
-    exec('open "' + url + '"');
-  } else {
-    exec('xdg-open "' + url + '"');
   }
 });
 

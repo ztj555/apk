@@ -72,49 +72,25 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- IP 输入 -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:text="电脑 IP 地址"
-        android:textColor="#A09070"
-        android:textSize="12sp" />
-
-    <EditText
-        android:id="@+id/ipInput"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginTop="8dp"
-        android:background="#1A1D24"
-        android:hint="例如: 192.168.2.38"
-        android:textColorHint="#605040"
-        android:textColor="#E8DCC8"
-        android:textSize="16sp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:inputType="phone"
-        android:singleLine="true" />
-
     <!-- 配对码输入 -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="4位配对码"
+        android:layout_marginTop="32dp"
+        android:text="输入电脑配对码"
         android:textColor="#A09070"
         android:textSize="12sp" />
 
     <EditText
         android:id="@+id/pinInput"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="64dp"
         android:layout_marginTop="8dp"
         android:background="#1A1D24"
-        android:hint="电脑屏幕上显示的4位数字"
+        android:hint="输入电脑屏幕上的4位数字"
         android:textColorHint="#605040"
         android:textColor="#E8DCC8"
-        android:textSize="24sp"
+        android:textSize="32sp"
         android:letterSpacing="0.3"
         android:gravity="center"
         android:paddingStart="16dp"
@@ -122,6 +98,38 @@
         android:inputType="number"
         android:maxLength="4"
         android:singleLine="true" />
+
+    <!-- 自动发现提示 -->
+    <TextView
+        android:id="@+id/discoveryHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="🔍 正在扫描局域网..."
+        android:textColor="#605040"
+        android:textSize="13sp"
+        android:visibility="visible" />
+
+    <!-- 已发现的电脑信息 -->
+    <LinearLayout
+        android:id="@+id/foundPCInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="#1A2A1A"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/foundPCText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✅ 发现电脑: 192.168.x.x"
+            android:textColor="#2ECC71"
+            android:textSize="14sp" />
+    </LinearLayout>
 
     <!-- 连接按钮 -->
     <LinearLayout
@@ -148,8 +156,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
-        android:text="请确保手机和电脑在同一WiFi下"
+        android:text="请确保手机和电脑在同一WiFi下\n输入电脑上显示的4位配对码即可自动连接"
         android:textSize="12sp"
-        android:textColor="#605040" />
+        android:textColor="#605040"
+        android:gravity="center" />
 
 </LinearLayout>
