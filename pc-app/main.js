@@ -147,6 +147,38 @@ const HTML_CONTENT = `<!DOCTYPE html>
   }
   @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
   .status-text { font-size: 11px; color: var(--text2); white-space: nowrap; }
+  .topmost-switch {
+    display: flex; align-items: center; gap: 4px;
+    cursor: pointer; user-select: none;
+    flex-shrink: 0;
+  }
+  .topmost-switch input { display: none; }
+  .topmost-switch .sw-track {
+    width: 28px; height: 14px;
+    background: var(--bg3);
+    border-radius: 7px;
+    position: relative;
+    transition: background 0.2s;
+    border: 1px solid var(--bg3);
+  }
+  .topmost-switch .sw-track::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text2);
+    transition: all 0.2s;
+  }
+  .topmost-switch input:checked + .sw-track {
+    background: var(--gold-dark);
+    border-color: var(--gold);
+  }
+  .topmost-switch input:checked + .sw-track::after {
+    left: 16px;
+    background: var(--gold-light);
+  }
+  .topmost-switch .sw-label { font-size: 10px; color: var(--text2); }
 
   /* ---- 连接成功横幅 ---- */
   .banner {
@@ -328,8 +360,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
   /* ---- 悬浮OCR横条 ---- */
   .float-bar {
-    position: fixed; bottom: 16px; left: 50%;
-    transform: translateX(-50%);
+    position: fixed; bottom: 16px; right: 16px;
     display: flex; align-items: center; gap: 8px;
     background: var(--bg2);
     border: 1px solid var(--gold-dark);
@@ -337,9 +368,12 @@ const HTML_CONTENT = `<!DOCTYPE html>
     padding: 6px 14px 6px 10px;
     z-index: 1000;
     box-shadow: 0 4px 24px rgba(0,0,0,0.5);
-    transition: all 0.2s;
+    cursor: move;
+    user-select: none;
+    transition: box-shadow 0.2s;
   }
   .float-bar:hover { border-color: var(--gold); box-shadow: 0 4px 30px rgba(201,168,76,0.15); }
+  .float-bar.dragging { box-shadow: 0 8px 32px rgba(0,0,0,0.7); opacity: 0.9; }
   .fb-dot {
     width: 10px; height: 10px;
     border-radius: 50%;
@@ -403,6 +437,11 @@ const HTML_CONTENT = `<!DOCTYPE html>
     </div>
     <div class="status-dot" id="statusDot"></div>
     <div class="status-text" id="statusText">等待连接</div>
+    <label class="topmost-switch" title="窗口置顶">
+      <input type="checkbox" id="topmostToggle" onchange="toggleTopmost(this.checked)">
+      <span class="sw-track"></span>
+      <span class="sw-label">置顶</span>
+    </label>
   </div>
 
   <div class="banner" id="banner">&#x2705; 手机已连接，可以拨号</div>
@@ -452,7 +491,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
 </div>
 <div class="toast" id="toast"></div>
 <!-- 悬浮OCR横条 -->
-<div class="float-bar">
+<div class="float-bar" id="floatBar">
   <div class="fb-dot"></div>
   <button class="fb-scan-btn" id="fbScanBtn" onclick="scanScreen()">读取</button>
   <input type="text" class="fb-input" id="fbInput" placeholder="扫描结果…" readonly>
@@ -588,16 +627,14 @@ function scanScreen() {
   fbInput.value = '';
   fbDialBtn.disabled = true;
 
-  // 获取当前窗口在屏幕上的位置，以计算周围189px区域
-  // 由于是 App 模式，screenX/screenY 就是窗口左上角
+  // 获取当前窗口在屏幕上的位置，截取圆点左侧189px区域（约5cm@96dpi）
   const winX = window.screenX || 0;
   const winY = window.screenY || 0;
-  const winW = window.outerWidth || 420;
-  // 截取窗口右侧区域（向外延伸189px）
-  const scanX = winX + winW + 10;
-  const scanY = winY;
+  // 圆点在窗口左侧，扫描窗口左边区域
   const scanW = 189;
-  const scanH = 300;
+  const scanH = 400;
+  const scanX = winX - scanW - 10;
+  const scanY = winY;
 
   fetch('/api/ocr', {
     method: 'POST',
@@ -640,6 +677,58 @@ function dialFromFloat() {
   ws.send(JSON.stringify({ type: 'dial', number }));
   addLog('info', '悬浮条拨号: ' + number);
 }
+
+// ---- 置顶开关 ----
+function toggleTopmost(on) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'set_topmost', value: !!on }));
+  }
+}
+
+// ---- 悬浮横条拖拽 ----
+(function() {
+  const bar = document.getElementById('floatBar');
+  if (!bar) return;
+  let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
+
+  function onDown(e) {
+    // 排除按钮和输入框的点击
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+    dragging = true;
+    bar.classList.add('dragging');
+    const rect = bar.getBoundingClientRect();
+    // 记录起始位置（转换为 left/top）
+    origLeft = rect.left;
+    origTop = rect.top;
+    startX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+    startY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+    // 切换到 left/top 定位模式
+    bar.style.left = origLeft + 'px';
+    bar.style.top = origTop + 'px';
+    bar.style.right = 'auto';
+    bar.style.bottom = 'auto';
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const cx = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+    const cy = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+    bar.style.left = (origLeft + cx - startX) + 'px';
+    bar.style.top = (origTop + cy - startY) + 'px';
+    e.preventDefault();
+  }
+  function onUp() {
+    if (!dragging) return;
+    dragging = false;
+    bar.classList.remove('dragging');
+  }
+  bar.addEventListener('mousedown', onDown);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  bar.addEventListener('touchstart', onDown, { passive: false });
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onUp);
+})();
 
 function toggleLog() {
   logOpen = !logOpen;
@@ -969,6 +1058,12 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+      // 置顶切换
+      if (msg.type === 'set_topmost') {
+        setTopmost(msg.value);
+        return;
+      }
+
     } catch (e) {
       console.error('[错误] 解析消息失败:', e.message);
     }
@@ -1005,6 +1100,36 @@ function notifyUIDialResult(result) {
       client.send(JSON.stringify({ type: 'dial_result', ...result }));
     }
   });
+}
+
+// ==================== 窗口置顶控制 ====================
+// 通过 PowerShell 调用 Win32 SetWindowPos 实现动态置顶/取消
+function setTopmost(enable) {
+  // HWND_TOPMOST = -1, HWND_NOTOPMOST = -2
+  // SWP_NOMOVE=0x0002, SWP_NOSIZE=0x0001, SWP_NOACTIVATE=0x0010
+  const flags = '0x0002 | 0x0001 | 0x0010';
+  const zOrder = enable ? '-1' : '-2';
+  const psCmd = `Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+}
+"@;
+$procs = Get-Process msedge, chrome -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -ne '' };
+$procs | ForEach-Object {
+  try {
+    [Win32]::SetWindowPos($_.MainWindowHandle, ${zOrder}, 0, 0, 0, 0, ${flags}) | Out-Null;
+  } catch {}
+}`;
+  exec('powershell -NoProfile -Command "' + psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ') + '"',
+    { timeout: 5000 }, (err) => {
+      if (!err) {
+        console.log('[置顶] ' + (enable ? '已开启' : '已关闭'));
+      } else {
+        console.error('[置顶] 设置失败:', err.message);
+      }
+    });
 }
 
 // ==================== 防火墙检查 ====================
@@ -1074,7 +1199,7 @@ server.listen(PORT, '0.0.0.0', () => {
   ];
   for (const edgePath of edgePaths) {
     if (fs.existsSync(edgePath)) {
-  exec('"' + edgePath + '" --app="' + url + '" --window-size=420,780 --always-on-top --no-first-run --disable-extensions', (err) => {
+  exec('"' + edgePath + '" --app="' + url + '" --window-size=420,780 --no-first-run --disable-extensions', (err) => {
         if (err) {
           // Edge 失败，fallback 到默认浏览器
           exec('start "" "' + url + '"');
@@ -1094,7 +1219,7 @@ server.listen(PORT, '0.0.0.0', () => {
     ];
     for (const chromePath of chromePaths) {
       if (fs.existsSync(chromePath)) {
-        exec('"' + chromePath + '" --app="' + url + '" --window-size=420,780 --always-on-top --no-first-run --disable-extensions', (err) => {
+        exec('"' + chromePath + '" --app="' + url + '" --window-size=420,780 --no-first-run --disable-extensions', (err) => {
           if (err) {
             exec('start "" "' + url + '"');
           }
