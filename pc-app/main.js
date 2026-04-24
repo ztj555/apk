@@ -492,28 +492,7 @@ pollClipboard();
 </script>
 </body>
 </html>`;
-  while (list.children.length > 100) list.removeChild(list.firstChild);
-}
 
-function clearLog() {
-  document.getElementById('logList').innerHTML = '';
-}
-
-let toastTimer = null;
-function showToast(msg, type) {
-  type = type || 'info';
-  const toast = document.getElementById('toast');
-  toast.textContent = msg;
-  toast.className = 'toast show ' + type;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.className = 'toast'; }, 2500);
-}
-
-loadInfo();
-connect();
-</script>
-</body>
-</html>`;
 
 // ==================== 生成唯一4位码 ====================
 function getMacAddress() {
