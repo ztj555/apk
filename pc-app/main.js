@@ -1,777 +1,44 @@
 'use strict';
 
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } = require('electron');
+const path = require('path');
 const http = require('http');
 const WebSocket = require('ws');
 const dgram = require('dgram');
 const os = require('os');
 const fs = require('fs');
-const path = require('path');
 const { exec, execSync } = require('child_process');
 const crypto = require('crypto');
 
-// ==================== 隐藏控制台：劫持 console ====================
-// 所有 console.log/error/warn 的内容将存入缓冲区，并推送给 UI WebSocket 客户端
-// 控制台黑窗口通过 .vbs 静默启动彻底隐藏
-const _logBuffer = []; // 启动阶段（WSS 还没就绪前）暂存的日志
-
-function _levelToType(level) {
-  if (level === 'error') return 'error';
-  if (level === 'warn')  return 'warn';
-  return 'info';
-}
+// ==================== 日志系统 ====================
+const _logBuffer = [];
 
 function _pushLog(level, text) {
-  const entry = { level: _levelToType(level), text, ts: Date.now() };
+  const entry = { level, text, ts: Date.now() };
   _logBuffer.push(entry);
   if (_logBuffer.length > 200) _logBuffer.shift();
-  // 若 wss 已就绪，广播给所有 UI 客户端
-  if (typeof wss !== 'undefined') {
-    _broadcastServerLog(entry);
-  }
+  // 广播给所有渲染进程
+  [mainWindow, floatBarWindow].forEach(win => {
+    if (win && !win.isDestroyed()) {
+      try { win.webContents.send('server-log', entry); } catch (e) {}
+    }
+  });
 }
 
-function _broadcastServerLog(entry) {
-  try {
-    wss.clients.forEach(client => {
-      if (!client.isPhone && client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ type: 'server_log', level: entry.level, text: entry.text }));
-      }
-    });
-  } catch (e) {}
-}
-
-// 新建 UI 客户端连上时，补发缓冲区里的历史日志
-function _flushLogBuffer(ws) {
+function _flushLogBuffer(win) {
   _logBuffer.forEach(entry => {
-    try {
-      ws.send(JSON.stringify({ type: 'server_log', level: entry.level, text: entry.text }));
-    } catch (e) {}
+    try { win.webContents.send('server-log', entry); } catch (e) {}
   });
 }
 
-// 劫持 console
-const _origLog   = console.log.bind(console);
+const _origLog = console.log.bind(console);
 const _origError = console.error.bind(console);
-const _origWarn  = console.warn.bind(console);
-console.log   = (...args) => { const t = args.join(' '); _origLog(t);   _pushLog('info',  t); };
+const _origWarn = console.warn.bind(console);
+console.log = (...args) => { const t = args.join(' '); _origLog(t); _pushLog('info', t); };
 console.error = (...args) => { const t = args.join(' '); _origError(t); _pushLog('error', t); };
-console.warn  = (...args) => { const t = args.join(' '); _origWarn(t);  _pushLog('warn',  t); };
+console.warn = (...args) => { const t = args.join(' '); _origWarn(t); _pushLog('warn', t); };
 
-// ==================== 内嵌 HTML ====================
-const HTML_CONTENT = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AutoDial</title>
-<style>
-  :root {
-    --gold: #C9A84C;
-    --gold-light: #F0C040;
-    --gold-dark: #8B6914;
-    --bg: #111318;
-    --bg2: #1A1D24;
-    --bg3: #22262F;
-    --text: #E8DCC8;
-    --text2: #A09070;
-    --green: #2ECC71;
-    --red: #E74C3C;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body {
-    width: 100%; height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-    overflow: hidden;
-    user-select: none;
-  }
-  .wrap {
-    width: 100%; height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* ---- 顶部状态栏 ---- */
-  .header {
-    background: var(--bg2);
-    border-bottom: 1px solid var(--gold-dark);
-    padding: 10px 14px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-  }
-  .logo {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--gold-light);
-    letter-spacing: 2px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .logo-icon {
-    width: 24px; height: 24px;
-    background: linear-gradient(135deg, var(--gold), var(--gold-dark));
-    border-radius: 6px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px;
-  }
-  .chips {
-    display: flex;
-    gap: 6px;
-    flex: 1;
-    justify-content: center;
-  }
-  .chip {
-    background: var(--bg);
-    border: 1px solid var(--gold-dark);
-    border-radius: 6px;
-    padding: 4px 10px;
-    text-align: center;
-  }
-  .chip .lbl { font-size: 9px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; }
-  .chip .val { font-size: 13px; font-weight: 700; color: var(--gold-light); letter-spacing: 2px; }
-  .chip .val.ip { font-size: 12px; letter-spacing: 0.5px; }
-  .status-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--red);
-    flex-shrink: 0;
-  }
-  .status-dot.on {
-    background: var(--green);
-    box-shadow: 0 0 6px var(--green);
-    animation: pulse 1.5s infinite;
-  }
-  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
-  .status-text { font-size: 11px; color: var(--text2); white-space: nowrap; }
-  .topmost-switch {
-    display: flex; align-items: center; gap: 4px;
-    cursor: pointer; user-select: none;
-    flex-shrink: 0;
-  }
-  .topmost-switch input { display: none; }
-  .topmost-switch .sw-track {
-    width: 28px; height: 14px;
-    background: var(--bg3);
-    border-radius: 7px;
-    position: relative;
-    transition: background 0.2s;
-    border: 1px solid var(--bg3);
-  }
-  .topmost-switch .sw-track::after {
-    content: '';
-    position: absolute;
-    top: 2px; left: 2px;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--text2);
-    transition: all 0.2s;
-  }
-  .topmost-switch input:checked + .sw-track {
-    background: var(--gold-dark);
-    border-color: var(--gold);
-  }
-  .topmost-switch input:checked + .sw-track::after {
-    left: 16px;
-    background: var(--gold-light);
-  }
-  .topmost-switch .sw-label { font-size: 10px; color: var(--text2); }
-
-  /* ---- 连接成功横幅 ---- */
-  .banner {
-    display: none;
-    background: rgba(46,204,113,0.12);
-    border-bottom: 1px solid var(--green);
-    padding: 6px 14px;
-    text-align: center;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--green);
-    letter-spacing: 1px;
-    flex-shrink: 0;
-  }
-  .banner.show { display: block; }
-
-  /* ---- 主内容区 ---- */
-  .body {
-    flex: 1;
-    padding: 12px 14px 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    overflow: hidden;
-  }
-
-  /* 号码输入框 */
-  .number-box {
-    background: var(--bg2);
-    border: 2px solid var(--gold-dark);
-    border-radius: 10px;
-    padding: 10px 14px;
-    flex-shrink: 0;
-  }
-  .number-box:focus-within { border-color: var(--gold); }
-  .number-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 4px;
-  }
-  .number-lbl { font-size: 9px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; }
-  .clip-hint { font-size: 9px; color: var(--gold); }
-  .clip-hint.flash { animation: flash 0.4s ease; }
-  @keyframes flash { 50%{ color: var(--gold-light); } }
-  .number-input {
-    background: none; border: none; outline: none;
-    font-size: 24px; font-weight: 700;
-    color: var(--text); width: 100%;
-    letter-spacing: 3px; caret-color: var(--gold);
-  }
-  .number-input::placeholder { color: var(--text2); font-size: 14px; font-weight: 400; letter-spacing: 1px; }
-  .number-actions { display: flex; gap: 6px; margin-top: 6px; }
-  .btn-sm {
-    background: none;
-    border-radius: 5px;
-    padding: 4px 10px;
-    font-size: 11px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn-clear { border: 1px solid var(--bg3); color: var(--text2); }
-  .btn-clear:hover { border-color: var(--red); color: var(--red); }
-
-  /* 拨号盘 */
-  .dialpad {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 7px;
-    flex-shrink: 0;
-  }
-  .dial-btn {
-    background: var(--bg2);
-    border: 1px solid var(--bg3);
-    border-radius: 10px;
-    padding: 10px 0;
-    cursor: pointer;
-    transition: all 0.12s;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 1px;
-  }
-  .dial-btn:hover { background: var(--bg3); border-color: var(--gold-dark); }
-  .dial-btn:active { transform: scale(0.93); background: rgba(201,168,76,0.1); border-color: var(--gold); }
-  .dial-btn .num { font-size: 18px; font-weight: 600; color: var(--text); line-height: 1; }
-  .dial-btn .sub { font-size: 7px; color: var(--text2); letter-spacing: 2px; text-transform: uppercase; }
-  .dial-btn.del .num { font-size: 16px; color: var(--red); }
-
-  /* 操作按钮 */
-  .action-row { display: flex; gap: 8px; flex-shrink: 0; }
-  .call-btn {
-    flex: 1;
-    padding: 14px;
-    background: linear-gradient(135deg, #27AE60, #1E8449);
-    border: none; border-radius: 12px;
-    color: white; font-size: 16px; font-weight: 700;
-    cursor: pointer; transition: all 0.2s;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    letter-spacing: 1px;
-  }
-  .call-btn:hover:not(:disabled) { background: linear-gradient(135deg, #2ECC71, #27AE60); box-shadow: 0 6px 18px rgba(39,174,96,0.35); }
-  .call-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.6; }
-  .hangup-btn {
-    flex: 1;
-    padding: 14px;
-    background: linear-gradient(135deg, #C0392B, #96281B);
-    border: none; border-radius: 12px;
-    color: white; font-size: 16px; font-weight: 700;
-    cursor: pointer; transition: all 0.2s;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    letter-spacing: 1px;
-  }
-  .hangup-btn:hover:not(:disabled) { background: linear-gradient(135deg, #E74C3C, #C0392B); }
-  .hangup-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.4; }
-
-  /* ---- 日志区（折叠） ---- */
-  .log-section { flex-shrink: 0; }
-  .log-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 5px 10px;
-    background: var(--bg2);
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 11px;
-    color: var(--text2);
-    border: 1px solid var(--bg3);
-    transition: border-color 0.2s;
-  }
-  .log-toggle:hover { border-color: var(--gold-dark); }
-  .log-toggle .arrow { transition: transform 0.2s; font-size: 10px; }
-  .log-toggle.open .arrow { transform: rotate(180deg); }
-  .log-body {
-    display: none;
-    max-height: 130px;
-    overflow-y: auto;
-    padding: 6px 8px;
-    gap: 4px;
-    flex-direction: column;
-    background: var(--bg2);
-    border-radius: 0 0 8px 8px;
-    border: 1px solid var(--bg3);
-    border-top: none;
-    margin-top: -1px;
-  }
-  .log-body.open { display: flex; }
-  .log-body::-webkit-scrollbar { width: 3px; }
-  .log-body::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
-  .log-entry {
-    display: flex; align-items: baseline; gap: 6px;
-    font-size: 11px; padding: 3px 6px;
-    border-radius: 4px;
-    background: var(--bg);
-    border-left: 2px solid var(--bg3);
-    animation: fadein 0.2s;
-  }
-  @keyframes fadein { from{opacity:0;} to{opacity:1;} }
-  .log-entry.success { border-left-color: var(--green); }
-  .log-entry.error   { border-left-color: var(--red);   }
-  .log-entry.info    { border-left-color: var(--gold);  }
-  .log-entry .lt { color: var(--text2); flex-shrink: 0; font-size: 10px; }
-  .log-entry .lm { color: var(--text); }
-
-  /* Toast */
-  .toast {
-    position: fixed; bottom: 12px; left: 50%;
-    transform: translateX(-50%) translateY(80px);
-    background: var(--bg3); border: 1px solid var(--gold-dark);
-    border-radius: 8px; padding: 8px 18px;
-    font-size: 12px; color: var(--text);
-    transition: transform 0.25s; z-index: 999; white-space: nowrap;
-  }
-  .toast.show { transform: translateX(-50%) translateY(0); }
-  .toast.success { border-color: var(--green); color: var(--green); }
-  .toast.error   { border-color: var(--red);   color: var(--red);   }
-
-  /* ---- 悬浮OCR横条 ---- */
-  .float-bar {
-    position: fixed; bottom: 16px; right: 16px;
-    display: flex; align-items: center; gap: 8px;
-    background: var(--bg2);
-    border: 1px solid var(--gold-dark);
-    border-radius: 28px;
-    padding: 6px 14px 6px 10px;
-    z-index: 1000;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
-    cursor: move;
-    user-select: none;
-    transition: box-shadow 0.2s;
-  }
-  .float-bar:hover { border-color: var(--gold); box-shadow: 0 4px 30px rgba(201,168,76,0.15); }
-  .float-bar.dragging { box-shadow: 0 8px 32px rgba(0,0,0,0.7); opacity: 0.9; }
-  .fb-dot {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 6px var(--green);
-    flex-shrink: 0;
-    animation: pulse 1.5s infinite;
-  }
-  .fb-scan-btn {
-    background: var(--bg);
-    border: 1px solid var(--gold-dark);
-    border-radius: 14px;
-    padding: 4px 10px;
-    color: var(--gold-light);
-    font-size: 11px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s;
-    flex-shrink: 0;
-  }
-  .fb-scan-btn:hover { background: var(--bg3); border-color: var(--gold); }
-  .fb-scan-btn:active { transform: scale(0.95); }
-  .fb-scan-btn.scanning { pointer-events: none; opacity: 0.6; }
-  .fb-scan-btn.scanning::after { content: ' ...'; }
-  .fb-input {
-    background: var(--bg);
-    border: 1px solid var(--bg3);
-    border-radius: 14px;
-    padding: 4px 10px;
-    color: var(--text);
-    font-size: 13px;
-    font-weight: 600;
-    width: 120px;
-    outline: none;
-    letter-spacing: 1px;
-    transition: border-color 0.15s;
-  }
-  .fb-input::placeholder { color: var(--text2); font-size: 11px; font-weight: 400; }
-  .fb-input:focus { border-color: var(--gold); }
-  .fb-dial-btn {
-    background: linear-gradient(135deg, #27AE60, #1E8449);
-    border: none; border-radius: 14px;
-    padding: 4px 12px;
-    color: white; font-size: 11px; font-weight: 700;
-    cursor: pointer; white-space: nowrap;
-    transition: all 0.15s;
-    flex-shrink: 0;
-    display: flex; align-items: center; gap: 4px;
-  }
-  .fb-dial-btn:hover:not(:disabled) { background: linear-gradient(135deg, #2ECC71, #27AE60); }
-  .fb-dial-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.5; }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="header">
-    <div class="logo"><div class="logo-icon">&#x1F4DE;</div>AutoDial</div>
-    <div class="chips">
-      <div class="chip"><div class="lbl">IP</div><div class="val ip" id="localIP">…</div></div>
-      <div class="chip"><div class="lbl">配对码</div><div class="val" id="pinCode">----</div></div>
-    </div>
-    <div class="status-dot" id="statusDot"></div>
-    <div class="status-text" id="statusText">等待连接</div>
-    <label class="topmost-switch" title="窗口置顶">
-      <input type="checkbox" id="topmostToggle" onchange="toggleTopmost(this.checked)">
-      <span class="sw-track"></span>
-      <span class="sw-label">置顶</span>
-    </label>
-  </div>
-
-  <div class="banner" id="banner">&#x2705; 手机已连接，可以拨号</div>
-
-  <div class="body">
-    <div class="number-box">
-      <div class="number-row">
-        <span class="number-lbl">号码</span>
-        <span class="clip-hint" id="clipHint">&#x1F4CB; 已跟随剪贴板</span>
-      </div>
-      <input type="text" class="number-input" id="numberInput"
-             placeholder="复制号码自动出现…" maxlength="20"
-             inputmode="tel" autocomplete="off">
-      <div class="number-actions">
-        <button class="btn-sm btn-clear" onclick="clearNumber()">清除</button>
-      </div>
-    </div>
-
-    <div class="dialpad">
-      <button class="dial-btn" onclick="pressKey('1')"><span class="num">1</span></button>
-      <button class="dial-btn" onclick="pressKey('2')"><span class="num">2</span><span class="sub">ABC</span></button>
-      <button class="dial-btn" onclick="pressKey('3')"><span class="num">3</span><span class="sub">DEF</span></button>
-      <button class="dial-btn" onclick="pressKey('4')"><span class="num">4</span><span class="sub">GHI</span></button>
-      <button class="dial-btn" onclick="pressKey('5')"><span class="num">5</span><span class="sub">JKL</span></button>
-      <button class="dial-btn" onclick="pressKey('6')"><span class="num">6</span><span class="sub">MNO</span></button>
-      <button class="dial-btn" onclick="pressKey('7')"><span class="num">7</span><span class="sub">PQRS</span></button>
-      <button class="dial-btn" onclick="pressKey('8')"><span class="num">8</span><span class="sub">TUV</span></button>
-      <button class="dial-btn" onclick="pressKey('9')"><span class="num">9</span><span class="sub">WXYZ</span></button>
-      <button class="dial-btn" onclick="pressKey('*')"><span class="num">&#x2731;</span></button>
-      <button class="dial-btn" onclick="pressKey('0')"><span class="num">0</span><span class="sub">+</span></button>
-      <button class="dial-btn del" onclick="deleteLast()"><span class="num">&#x232B;</span></button>
-    </div>
-
-    <div class="action-row">
-      <button class="call-btn" id="callBtn" onclick="dial()" disabled>&#x1F4DE; 拨号</button>
-      <button class="hangup-btn" id="hangupBtn" onclick="hangup()" disabled>&#x1F4F5; 挂断</button>
-    </div>
-
-    <div class="log-section">
-      <div class="log-toggle" id="logToggle" onclick="toggleLog()">
-        <span>&#x1F4DD; 日志</span>
-        <span class="arrow">&#x25BC;</span>
-      </div>
-      <div class="log-body" id="logBody"></div>
-    </div>
-  </div>
-</div>
-<div class="toast" id="toast"></div>
-<!-- 悬浮OCR横条 -->
-<div class="float-bar" id="floatBar">
-  <div class="fb-dot"></div>
-  <button class="fb-scan-btn" id="fbScanBtn" onclick="scanScreen()">读取</button>
-  <input type="text" class="fb-input" id="fbInput" placeholder="扫描结果…" readonly>
-  <button class="fb-dial-btn" id="fbDialBtn" onclick="dialFromFloat()" disabled>&#x1F4DE; 拨打</button>
-</div>
-<script>
-let ws = null;
-let isConnected = false;
-let reconnectTimer = null;
-let lastClipboard = '';
-let clipboardTimer = null;
-let logOpen = false;
-
-function connect() {
-  if (ws && ws.readyState === WebSocket.OPEN) return;
-  ws = new WebSocket('ws://localhost:' + (location.port || 35432));
-  ws.onopen = () => {};
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'status_update') {
-      setPhoneConnected(msg.connected, msg.phoneIP);
-    } else if (msg.type === 'dial_sent') {
-      addLog('success', '&#x1F4DE; 已发送: ' + msg.number);
-    } else if (msg.type === 'dial_result') {
-      addLog(msg.status === 'ok' ? 'success' : 'error', msg.number + ' ' + (msg.status === 'ok' ? '✓' : '✗'));
-    } else if (msg.type === 'error') {
-      showToast(msg.message, 'error');
-      addLog('error', msg.message);
-    } else if (msg.type === 'hangup_sent') {
-      addLog('info', '已发送挂断');
-    } else if (msg.type === 'server_log') {
-      // 服务端日志 → 显示到日志框
-      const lvl = msg.level === 'error' ? 'error' : msg.level === 'warn' ? 'error' : 'info';
-      addLog(lvl, '🖥 ' + msg.text);
-    }
-  };
-  ws.onclose = () => { clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connect, 2000); };
-  ws.onerror = () => {};
-}
-
-function loadInfo() {
-  fetch('/api/info')
-    .then(r => r.json())
-    .then(info => {
-      document.getElementById('localIP').textContent = info.ip;
-      document.getElementById('pinCode').textContent = info.pin;
-      if (info.connected) setPhoneConnected(true, null);
-      if (info.firewall === 'warning') addLog('error', '防火墙可能拦截连接，请以管理员运行');
-    })
-    .catch(() => setTimeout(loadInfo, 1000));
-}
-
-function setPhoneConnected(connected, phoneIP) {
-  isConnected = connected;
-  const dot = document.getElementById('statusDot');
-  const txt = document.getElementById('statusText');
-  const banner = document.getElementById('banner');
-  document.getElementById('callBtn').disabled = !connected;
-  document.getElementById('hangupBtn').disabled = !connected;
-  if (connected) {
-    dot.className = 'status-dot on';
-    txt.textContent = phoneIP ? phoneIP : '已连接';
-    banner.className = 'banner show';
-    addLog('success', '手机已连接' + (phoneIP ? ' ' + phoneIP : ''));
-    showToast('手机已连接！', 'success');
-  } else {
-    dot.className = 'status-dot';
-    txt.textContent = '等待连接';
-    banner.className = 'banner';
-    addLog('error', '手机已断开');
-  }
-}
-
-function pressKey(key) {
-  const inp = document.getElementById('numberInput');
-  inp.value += key; inp.focus();
-}
-function deleteLast() {
-  const inp = document.getElementById('numberInput');
-  inp.value = inp.value.slice(0, -1);
-}
-function clearNumber() { document.getElementById('numberInput').value = ''; }
-
-function dial() {
-  const number = document.getElementById('numberInput').value.trim().replace(/\\s/g, '');
-  if (!number) { showToast('请输入号码', 'error'); return; }
-  if (!isConnected) { showToast('手机未连接', 'error'); return; }
-  if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('服务异常', 'error'); return; }
-  ws.send(JSON.stringify({ type: 'dial', number }));
-  addLog('info', '发送拨号: ' + number);
-}
-function hangup() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('服务异常', 'error'); return; }
-  if (!isConnected) { showToast('手机未连接', 'error'); return; }
-  ws.send(JSON.stringify({ type: 'hangup' }));
-  addLog('info', '发送挂断');
-  showToast('已发送挂断指令');
-}
-
-function extractPhone(text) {
-  const m = text.match(/1[3-9]\\d{9}|0\\d{2,3}[-\\s]?\\d{7,8}/);
-  return m ? m[0].replace(/[-\\s]/g, '') : null;
-}
-
-// 服务端读取剪贴板，1秒轮询
-function pollClipboard() {
-  fetch('/api/clipboard')
-    .then(r => r.json())
-    .then(d => {
-      if (d.text && d.text !== lastClipboard) {
-        lastClipboard = d.text;
-        const phone = extractPhone(d.text);
-        if (phone) {
-          const inp = document.getElementById('numberInput');
-          inp.value = phone;
-          const hint = document.getElementById('clipHint');
-          hint.classList.add('flash');
-          setTimeout(() => hint.classList.remove('flash'), 400);
-        }
-      }
-    })
-    .catch(() => {})
-    .finally(() => { clipboardTimer = setTimeout(pollClipboard, 1000); });
-}
-
-// ---- 悬浮横条：OCR截屏扫描 ----
-function scanScreen() {
-  const btn = document.getElementById('fbScanBtn');
-  const fbInput = document.getElementById('fbInput');
-  const fbDialBtn = document.getElementById('fbDialBtn');
-  btn.classList.add('scanning');
-  btn.textContent = '扫描中';
-  fbInput.value = '';
-  fbDialBtn.disabled = true;
-
-  // 获取当前窗口在屏幕上的位置，截取圆点左侧189px区域（约5cm@96dpi）
-  const winX = window.screenX || 0;
-  const winY = window.screenY || 0;
-  // 圆点在窗口左侧，扫描窗口左边区域
-  const scanW = 189;
-  const scanH = 400;
-  const scanX = winX - scanW - 10;
-  const scanY = winY;
-
-  fetch('/api/ocr', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ x: scanX, y: scanY, w: scanW, h: scanH })
-  })
-  .then(r => r.json())
-  .then(data => {
-    btn.classList.remove('scanning');
-    btn.textContent = '读取';
-    if (data.error) {
-      showToast('OCR失败: ' + data.error, 'error');
-      return;
-    }
-    if (data.phone) {
-      fbInput.value = data.phone;
-      fbDialBtn.disabled = !isConnected;
-      showToast('识别到号码: ' + data.phone, 'success');
-      addLog('success', 'OCR识别: ' + data.phone);
-      // 同时更新主界面号码框
-      document.getElementById('numberInput').value = data.phone;
-    } else {
-      showToast('未识别到手机号', 'error');
-      fbInput.value = data.text ? data.text.substring(0, 20) : '无结果';
-    }
-  })
-  .catch(err => {
-    btn.classList.remove('scanning');
-    btn.textContent = '读取';
-    showToast('扫描失败', 'error');
-    addLog('error', 'OCR扫描失败: ' + err.message);
-  });
-}
-
-function dialFromFloat() {
-  const number = document.getElementById('fbInput').value.trim();
-  if (!number) { showToast('请先扫描号码', 'error'); return; }
-  if (!isConnected) { showToast('手机未连接', 'error'); return; }
-  if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('服务异常', 'error'); return; }
-  ws.send(JSON.stringify({ type: 'dial', number }));
-  addLog('info', '悬浮条拨号: ' + number);
-}
-
-// ---- 置顶开关 ----
-function toggleTopmost(on) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'set_topmost', value: !!on }));
-  }
-}
-
-// ---- 悬浮横条拖拽 ----
-(function() {
-  const bar = document.getElementById('floatBar');
-  if (!bar) return;
-  let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
-
-  function onDown(e) {
-    // 排除按钮和输入框的点击
-    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
-    dragging = true;
-    bar.classList.add('dragging');
-    const rect = bar.getBoundingClientRect();
-    // 记录起始位置（转换为 left/top）
-    origLeft = rect.left;
-    origTop = rect.top;
-    startX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
-    startY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
-    // 切换到 left/top 定位模式
-    bar.style.left = origLeft + 'px';
-    bar.style.top = origTop + 'px';
-    bar.style.right = 'auto';
-    bar.style.bottom = 'auto';
-    e.preventDefault();
-  }
-  function onMove(e) {
-    if (!dragging) return;
-    const cx = e.clientX || (e.touches && e.touches[0].clientX) || 0;
-    const cy = e.clientY || (e.touches && e.touches[0].clientY) || 0;
-    bar.style.left = (origLeft + cx - startX) + 'px';
-    bar.style.top = (origTop + cy - startY) + 'px';
-    e.preventDefault();
-  }
-  function onUp() {
-    if (!dragging) return;
-    dragging = false;
-    bar.classList.remove('dragging');
-  }
-  bar.addEventListener('mousedown', onDown);
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
-  bar.addEventListener('touchstart', onDown, { passive: false });
-  document.addEventListener('touchmove', onMove, { passive: false });
-  document.addEventListener('touchend', onUp);
-})();
-
-function toggleLog() {
-  logOpen = !logOpen;
-  document.getElementById('logToggle').classList.toggle('open', logOpen);
-  document.getElementById('logBody').classList.toggle('open', logOpen);
-}
-
-function addLog(type, msg) {
-  const body = document.getElementById('logBody');
-  const now = new Date();
-  const t = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
-  const el = document.createElement('div');
-  el.className = 'log-entry ' + type;
-  el.innerHTML = '<span class="lt">' + t + '</span><span class="lm">' + msg + '</span>';
-  body.appendChild(el);
-  body.scrollTop = body.scrollHeight;
-  while (body.children.length > 80) body.removeChild(body.firstChild);
-  // 自动展开日志
-  if (!logOpen) { logOpen = true; document.getElementById('logToggle').classList.add('open'); body.classList.add('open'); }
-}
-
-let toastTimer = null;
-function showToast(msg, type) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.className = 'toast show ' + (type || '');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.className = 'toast'; }, 2500);
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter') dial();
-  if (e.key === 'Backspace' && document.activeElement.id !== 'numberInput') deleteLast();
-});
-
-loadInfo();
-connect();
-pollClipboard();
-</script>
-</body>
-</html>`;
-
-
-// ==================== 生成唯一4位码 ====================
+// ==================== 常量与工具函数 ====================
 function getMacAddress() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -791,7 +58,6 @@ function generatePinCode() {
   return String(num % 9000 + 1000);
 }
 
-// ==================== 获取本机局域网IP ====================
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
   const candidates = [];
@@ -806,7 +72,6 @@ function getLocalIP() {
   return preferred ? preferred.address : (candidates[0] ? candidates[0].address : '127.0.0.1');
 }
 
-// ==================== 获取子网网段 ====================
 function getSubnet() {
   const ip = getLocalIP();
   const parts = ip.split('.');
@@ -819,124 +84,130 @@ const SUBNET = getSubnet();
 const PORT = 35432;
 const DISCOVERY_PORT = 35433;
 
-// ==================== UDP 广播发现服务 ====================
-// 手机发送配对码到广播地址，电脑匹配后回复自己的IP
-const udpSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+let phoneSocket = null;
+let mainWindow = null;
+let floatBarWindow = null;
 
-udpSocket.on('error', (err) => {
-  console.error('[UDP错误]', err.message);
-});
-
-udpSocket.on('message', (msg, rinfo) => {
-  try {
-    const data = JSON.parse(msg.toString());
-    // 手机发来的发现请求
-    if (data.type === 'discover' && data.pin === PIN_CODE) {
-      const reply = JSON.stringify({
-        type: 'found',
-        pin: PIN_CODE,
-        ip: LOCAL_IP,
-        port: PORT
-      });
-      udpSocket.send(reply, rinfo.port, rinfo.address);
-      console.log('[发现] 手机 ' + rinfo.address + ' 查询配对码 ' + data.pin + '，已回复');
+// ==================== 窗口创建 ====================
+function createMainWindow() {
+  mainWindow = new BrowserWindow({
+    width: 420,
+    height: 780,
+    minWidth: 380,
+    minHeight: 600,
+    frame: false,           // 无边框
+    transparent: false,
+    backgroundColor: '#111318',
+    resizable: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
     }
-  } catch (e) {}
-});
-
-udpSocket.bind(DISCOVERY_PORT, '0.0.0.0', () => {
-  udpSocket.setBroadcast(true);
-  console.log('[发现] UDP广播服务已启动，端口: ' + DISCOVERY_PORT);
-});
-
-// 定期广播自己的存在（让手机能被动发现）
-let broadcastTimer = null;
-function startBroadcast() {
-  const msg = JSON.stringify({
-    type: 'announce',
-    pin: PIN_CODE,
-    ip: LOCAL_IP,
-    port: PORT
   });
-  broadcastTimer = setInterval(() => {
-    try {
-      udpSocket.send(msg, DISCOVERY_PORT, '255.255.255.255');
-    } catch (e) {}
-  }, 3000);
+
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  mainWindow.setMenuBarVisibility(false);
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    if (floatBarWindow && !floatBarWindow.isDestroyed()) {
+      floatBarWindow.close();
+    }
+    app.quit();
+  });
+
+  // 补发历史日志
+  mainWindow.webContents.on('did-finish-load', () => {
+    _flushLogBuffer(mainWindow);
+  });
 }
 
-// ==================== HTTP 服务器 ====================
-let phoneSocket = null;
+function createFloatBarWindow() {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
 
-const server = http.createServer((req, res) => {
-  // API 接口
-  if (req.url === '/api/info') {
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({
-      pin: PIN_CODE,
-      ip: LOCAL_IP,
-      port: PORT,
-      connected: phoneSocket !== null,
-      hostname: os.hostname(),
-      firewall: firewallWarning ? 'warning' : 'ok'
-    }));
-    return;
-  }
-
-  // 剪贴板接口（Node.js 读取系统剪贴板，绕过浏览器安全限制）
-  if (req.url === '/api/clipboard') {
-    try {
-      let text = '';
-      if (process.platform === 'win32') {
-        text = execSync('powershell -command "Get-Clipboard"', { timeout: 1000, encoding: 'utf8' }).trim();
-      } else if (process.platform === 'darwin') {
-        text = execSync('pbpaste', { timeout: 1000, encoding: 'utf8' }).trim();
-      } else {
-        text = execSync('xclip -selection clipboard -o 2>/dev/null || xdotool type --clearmodifiers --file -', { timeout: 1000, encoding: 'utf8' }).trim();
-      }
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ text }));
-    } catch (e) {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ text: '' }));
+  floatBarWindow = new BrowserWindow({
+    width: 340,
+    height: 48,
+    x: screenW - 360,
+    y: screenH - 80,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    focusable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
     }
-    return;
+  });
+
+  floatBarWindow.loadFile(path.join(__dirname, 'renderer', 'floatbar.html'));
+  floatBarWindow.setIgnoreMouseEvents(false);
+  floatBarWindow.setVisibleOnAllWorkspaces(true);
+
+  floatBarWindow.on('closed', () => {
+    floatBarWindow = null;
+  });
+
+  floatBarWindow.webContents.on('did-finish-load', () => {
+    _flushLogBuffer(floatBarWindow);
+  });
+}
+
+// ==================== IPC 处理 ====================
+
+// 获取服务器信息
+ipcMain.handle('get-info', async () => {
+  return {
+    pin: PIN_CODE,
+    ip: LOCAL_IP,
+    port: PORT,
+    connected: phoneSocket !== null,
+    hostname: os.hostname(),
+    firewall: firewallWarning ? 'warning' : 'ok'
+  };
+});
+
+// 读取系统剪贴板
+ipcMain.handle('read-clipboard', async () => {
+  try {
+    let text = '';
+    if (process.platform === 'win32') {
+      text = execSync('powershell -command "Get-Clipboard"', { timeout: 1000, encoding: 'utf8' }).trim();
+    } else if (process.platform === 'darwin') {
+      text = execSync('pbpaste', { timeout: 1000, encoding: 'utf8' }).trim();
+    } else {
+      text = execSync('xclip -selection clipboard -o 2>/dev/null || xdotool type --clearmodifiers --file -', { timeout: 1000, encoding: 'utf8' }).trim();
+    }
+    return { text };
+  } catch (e) {
+    return { text: '' };
   }
+});
 
-  // OCR 接口：截取屏幕区域（悬浮窗周围189px，约5cm@96dpi），用 WinRT OCR 识别文字
-  if (req.url === '/api/ocr' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      let x = 0, y = 0, w = 400, h = 200;
-      try {
-        const params = JSON.parse(body);
-        if (typeof params.x === 'number') x = params.x;
-        if (typeof params.y === 'number') y = params.y;
-        if (typeof params.w === 'number') w = params.w;
-        if (typeof params.h === 'number') h = params.h;
-      } catch (e) {}
-
-      const psScript = `
+// OCR 截屏扫描
+ipcMain.handle('scan-screen', async (event, x, y, w, h) => {
+  const psScript = `
 [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType = WindowsRuntime] | Out-Null
 [Windows.Media.Ocr.OcrEngine, Windows.Media.Ocr, ContentType = WindowsRuntime] | Out-Null
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime] | Out-Null
 
-# 截屏
 Add-Type -AssemblyName System.Windows.Forms
 $screen = [System.Windows.Forms.Screen]::PrimaryScreen
 $bmp = New-Object System.Drawing.Bitmap($w, $h)
 $gfx = [System.Drawing.Graphics]::FromImage($bmp)
 $gfx.CopyFromScreen($x, $y, 0, 0, (New-Object System.Drawing.Size($w, $h)))
 
-# 保存到临时文件
 $tmpPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'autodial_ocr.bmp')
 $bmp.Save($tmpPath, [System.Drawing.Imaging.ImageFormat]::Bmp)
 $gfx.Dispose()
 $bmp.Dispose()
 
-# OCR
 $file = [Windows.Storage.StorageFile]::GetFileFromPathAsync($tmpPath).AsTask().GetAwaiter().GetResult()
 $stream = $file.OpenAsync([Windows.Storage.FileAccessMode]::Read).AsTask().GetAwaiter().GetResult()
 $decoder = [Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream).AsTask().GetAwaiter().GetResult()
@@ -949,50 +220,121 @@ $stream.Dispose()
 Remove-Item $tmpPath -Force -ErrorAction SilentlyContinue
 Write-Output $text
 `;
+
+  try {
+    const ocrText = execSync(
+      'powershell -NoProfile -Command "' + psScript.replace(/"/g, '\\"').replace(/\n/g, ' ') + '"',
+      { timeout: 10000, encoding: 'utf8', maxBuffer: 1024 * 1024 }
+    ).trim();
+
+    const phoneMatch = ocrText.match(/1[3-9]\d{9}/g);
+    const phone = phoneMatch ? phoneMatch[0] : null;
+
+    // 找到手机号写入剪贴板
+    if (phone && process.platform === 'win32') {
       try {
-        const ocrText = execSync(
-          'powershell -NoProfile -Command "' + psScript.replace(/"/g, '\\"').replace(/\n/g, ' ') + '"',
-          { timeout: 10000, encoding: 'utf8', maxBuffer: 1024 * 1024 }
-        ).trim();
+        execSync('powershell -command "Set-Clipboard -Value \'' + phone + '\'"', { timeout: 1000 });
+      } catch (e) {}
+    }
 
-        // 从 OCR 结果中提取11位手机号
-        const phoneMatch = ocrText.match(/1[3-9]\d{9}/g);
-        const phone = phoneMatch ? phoneMatch[0] : null;
-
-        // 如果找到手机号，写入系统剪贴板
-        if (phone && process.platform === 'win32') {
-          try {
-            execSync('powershell -command "Set-Clipboard -Value \'' + phone + '\'"', { timeout: 1000 });
-          } catch (e) {}
-        }
-
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ text: ocrText, phone }));
-        console.log('[OCR] 识别结果: ' + (phone ? '发现号码 ' + phone : '未发现手机号'));
-      } catch (e) {
-        console.error('[OCR] 识别失败:', e.message);
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ text: '', phone: null, error: e.message }));
-      }
-    });
-    return;
+    console.log('[OCR] 识别结果: ' + (phone ? '发现号码 ' + phone : '未发现手机号'));
+    return { text: ocrText, phone };
+  } catch (e) {
+    console.error('[OCR] 识别失败:', e.message);
+    return { text: '', phone: null, error: e.message };
   }
-
-  // 所有页面请求返回内嵌HTML
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(HTML_CONTENT);
 });
 
+// 拨号指令
+ipcMain.on('dial', (event, number) => {
+  if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+    _sendError(event, '手机未连接');
+    return;
+  }
+  phoneSocket.send(JSON.stringify({ type: 'dial', number }));
+  console.log('[拨号] ' + number);
+  // 通知 UI 拨号已发送
+  [mainWindow, floatBarWindow].forEach(win => {
+    if (win && !win.isDestroyed()) {
+      try { win.webContents.send('dial-sent', { number }); } catch (e) {}
+    }
+  });
+});
+
+// 挂断指令
+ipcMain.on('hangup', (event) => {
+  if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+    _sendError(event, '手机未连接');
+    return;
+  }
+  phoneSocket.send(JSON.stringify({ type: 'hangup' }));
+  console.log('[挂断] 电脑端发送挂断指令');
+  [mainWindow, floatBarWindow].forEach(win => {
+    if (win && !win.isDestroyed()) {
+      try { win.webContents.send('hangup-sent'); } catch (e) {}
+    }
+  });
+});
+
+// 窗口置顶
+ipcMain.on('set-topmost', (event, enable) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setAlwaysOnTop(enable);
+  }
+  console.log('[置顶] ' + (enable ? '已开启' : '已关闭'));
+});
+
+// 窗口控制（最小化/关闭）
+ipcMain.on('window-control', (event, action) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (action === 'minimize') mainWindow.minimize();
+  if (action === 'close') mainWindow.close();
+});
+
+// 悬浮横条位置反馈
+ipcMain.on('floatbar-position', (event, rect) => {
+  // 可用于保存位置，后续扩展
+});
+
+// 悬浮横条拖拽移动
+ipcMain.on('floatbar-move', (event, pos) => {
+  if (floatBarWindow && !floatBarWindow.isDestroyed()) {
+    floatBarWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
+  }
+});
+
+// 悬浮横条请求获取位置
+ipcMain.on('floatbar-get-position', (event) => {
+  if (floatBarWindow && !floatBarWindow.isDestroyed()) {
+    const bounds = floatBarWindow.getBounds();
+    try { event.sender.send('floatbar-position-reply', { x: bounds.x, y: bounds.y }); } catch (e) {}
+  }
+});
+
+function _sendError(event, message) {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    try { win.webContents.send('error', { message }); } catch (e) {}
+  }
+}
+
 // ==================== WebSocket 服务器 ====================
+const server = http.createServer((req, res) => {
+  // 兼容手机端可能请求页面
+  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify({
+    pin: PIN_CODE,
+    ip: LOCAL_IP,
+    port: PORT,
+    connected: phoneSocket !== null
+  }));
+});
+
 const wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws, req) => {
   const clientIP = req.socket.remoteAddress.replace('::ffff:', '');
   console.log('[连接] 新客户端: ' + clientIP);
-
-  // 新 UI 客户端连接，补发历史日志
-  // (手机端握手后 isPhone=true，在此之前先补发，手机端消息里会忽略 server_log)
-  _flushLogBuffer(ws);
 
   ws.on('message', (data) => {
     try {
@@ -1013,54 +355,25 @@ wss.on('connection', (ws, req) => {
         phoneSocket = ws;
         ws.isPhone = true;
         ws.send(JSON.stringify({ type: 'auth_ok', message: '配对成功！' }));
-        notifyUIStatus(true, clientIP);
+        _notifyUIStatus(true, clientIP);
         console.log('[配对] 手机连接成功: ' + clientIP);
-        return;
-      }
-
-      // 网页端发拨号指令
-      if (msg.type === 'dial') {
-        if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'error', message: '手机未连接' }));
-          return;
-        }
-        phoneSocket.send(JSON.stringify({
-          type: 'dial',
-          number: msg.number
-        }));
-        console.log('[拨号] ' + msg.number);
-        ws.send(JSON.stringify({ type: 'dial_sent', number: msg.number }));
         return;
       }
 
       // 手机回报拨号结果
       if (msg.type === 'dial_result') {
         console.log('[结果] ' + msg.number + ': ' + msg.status);
-        notifyUIDialResult(msg);
-        return;
-      }
-
-      // 电脑端发挂断指令
-      if (msg.type === 'hangup') {
-        if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'error', message: '手机未连接' }));
-          return;
-        }
-        phoneSocket.send(JSON.stringify({ type: 'hangup' }));
-        console.log('[挂断] 电脑端发送挂断指令');
-        ws.send(JSON.stringify({ type: 'hangup_sent' }));
+        [mainWindow, floatBarWindow].forEach(win => {
+          if (win && !win.isDestroyed()) {
+            try { win.webContents.send('dial-result', msg); } catch (e) {}
+          }
+        });
         return;
       }
 
       // 心跳
       if (msg.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong' }));
-        return;
-      }
-
-      // 置顶切换
-      if (msg.type === 'set_topmost') {
-        setTopmost(msg.value);
         return;
       }
 
@@ -1072,7 +385,7 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     if (ws.isPhone) {
       phoneSocket = null;
-      notifyUIStatus(false, null);
+      _notifyUIStatus(false, null);
       console.log('[断开] 手机断开连接: ' + clientIP);
     }
   });
@@ -1082,70 +395,60 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-function notifyUIStatus(connected, phoneIP) {
-  wss.clients.forEach(client => {
-    if (!client.isPhone && client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({
-        type: 'status_update',
-        connected,
-        phoneIP
-      }));
+function _notifyUIStatus(connected, phoneIP) {
+  const data = { connected, phoneIP };
+  [mainWindow, floatBarWindow].forEach(win => {
+    if (win && !win.isDestroyed()) {
+      try { win.webContents.send('status-update', data); } catch (e) {}
     }
   });
 }
 
-function notifyUIDialResult(result) {
-  wss.clients.forEach(client => {
-    if (!client.isPhone && client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ type: 'dial_result', ...result }));
-    }
-  });
-}
+// ==================== UDP 广播发现服务 ====================
+const udpSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
-// ==================== 窗口置顶控制 ====================
-// 通过 PowerShell 调用 Win32 SetWindowPos 实现动态置顶/取消
-function setTopmost(enable) {
-  // HWND_TOPMOST = -1, HWND_NOTOPMOST = -2
-  // SWP_NOMOVE=0x0002, SWP_NOSIZE=0x0001, SWP_NOACTIVATE=0x0010
-  const flags = '0x0002 | 0x0001 | 0x0010';
-  const zOrder = enable ? '-1' : '-2';
-  const psCmd = `Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class Win32 {
-  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-}
-"@;
-$procs = Get-Process msedge, chrome -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -ne '' };
-$procs | ForEach-Object {
+udpSocket.on('error', (err) => {
+  console.error('[UDP错误]', err.message);
+});
+
+udpSocket.on('message', (msg, rinfo) => {
   try {
-    [Win32]::SetWindowPos($_.MainWindowHandle, ${zOrder}, 0, 0, 0, 0, ${flags}) | Out-Null;
-  } catch {}
-}`;
-  exec('powershell -NoProfile -Command "' + psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ') + '"',
-    { timeout: 5000 }, (err) => {
-      if (!err) {
-        console.log('[置顶] ' + (enable ? '已开启' : '已关闭'));
-      } else {
-        console.error('[置顶] 设置失败:', err.message);
-      }
-    });
+    const data = JSON.parse(msg.toString());
+    if (data.type === 'discover' && data.pin === PIN_CODE) {
+      const reply = JSON.stringify({
+        type: 'found',
+        pin: PIN_CODE,
+        ip: LOCAL_IP,
+        port: PORT
+      });
+      udpSocket.send(reply, rinfo.port, rinfo.address);
+      console.log('[发现] 手机 ' + rinfo.address + ' 查询配对码 ' + data.pin + '，已回复');
+    }
+  } catch (e) {}
+});
+
+udpSocket.bind(DISCOVERY_PORT, '0.0.0.0', () => {
+  udpSocket.setBroadcast(true);
+  console.log('[发现] UDP广播服务已启动，端口: ' + DISCOVERY_PORT);
+});
+
+function startBroadcast() {
+  const msg = JSON.stringify({
+    type: 'announce',
+    pin: PIN_CODE,
+    ip: LOCAL_IP,
+    port: PORT
+  });
+  setInterval(() => {
+    try {
+      udpSocket.send(msg, DISCOVERY_PORT, '255.255.255.255');
+    } catch (e) {}
+  }, 3000);
 }
 
 // ==================== 防火墙检查 ====================
-function checkFirewall() {
-  return new Promise((resolve) => {
-    exec('netsh advfirewall firewall show rule name="AutoDial"', (err, stdout) => {
-      if (stdout && stdout.includes('AutoDial') && stdout.includes('35432')) {
-        resolve(true); // 规则已存在
-      } else {
-        resolve(false); // 没有规则
-      }
-    });
-  });
-}
+let firewallWarning = false;
 
-// 启动时静默尝试添加防火墙规则
 function tryAddFirewallRule() {
   exec(
     'netsh advfirewall firewall add rule name="AutoDial" dir=in action=allow protocol=TCP localport=' + PORT + ' profile=any description=AutoDial一键拨号 2>nul & ' +
@@ -1156,84 +459,43 @@ function tryAddFirewallRule() {
         firewallWarning = true;
       } else {
         console.log('[防火墙] 入站规则已添加');
-        checkFirewall().then(ok => { if (!ok) firewallWarning = true; });
       }
     }
   );
 }
 
-let firewallWarning = false;
-tryAddFirewallRule();
+// ==================== 启动 ====================
+app.whenReady().then(() => {
+  tryAddFirewallRule();
 
-// ==================== 启动服务器 ====================
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error('[错误] 端口 ' + PORT + ' 已被占用，请关闭其他 AutoDial 实例');
-    exec('mshta vbscript:msgbox("AutoDial 端口被占用，请检查是否已有程序在运行！",48,"AutoDial 错误")(window.close)');
-    process.exit(1);
-  }
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error('[错误] 端口 ' + PORT + ' 已被占用，请关闭其他 AutoDial 实例');
+      // 使用 dialog 替代 mshta
+      const { dialog } = require('electron');
+      dialog.showErrorBox('AutoDial 错误', '端口 ' + PORT + ' 已被占用，请检查是否已有程序在运行！');
+      app.quit();
+    }
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log('');
+    console.log('========================================');
+    console.log('       AutoDial PC 端已启动');
+    console.log('========================================');
+    console.log('  本机IP:   ' + LOCAL_IP);
+    console.log('  配对码:   ' + PIN_CODE);
+    console.log('  端口:     ' + PORT);
+    console.log('========================================');
+
+    startBroadcast();
+    createMainWindow();
+    createFloatBarWindow();
+  });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log('');
-  console.log('========================================');
-  console.log('       AutoDial PC 端已启动');
-  console.log('========================================');
-  console.log('  本机IP:   ' + LOCAL_IP);
-  console.log('  配对码:   ' + PIN_CODE);
-  console.log('  端口:     ' + PORT);
-  console.log('========================================');
-
-  // 启动 UDP 广播
-  startBroadcast();
-
-  // 用 Chrome/Edge App 模式打开（去掉地址栏，像桌面应用）
-  const url = 'http://localhost:' + PORT;
-  let opened = false;
-
-  // 尝试 Edge App 模式
-  const edgePaths = [
-    process.env['LOCALAPPDATA'] + '\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
-  ];
-  for (const edgePath of edgePaths) {
-    if (fs.existsSync(edgePath)) {
-  exec('"' + edgePath + '" --app="' + url + '" --window-size=420,780 --no-first-run --disable-extensions', (err) => {
-        if (err) {
-          // Edge 失败，fallback 到默认浏览器
-          exec('start "" "' + url + '"');
-        }
-      });
-      opened = true;
-      break;
-    }
-  }
-
-  // 尝试 Chrome App 模式
-  if (!opened) {
-    const chromePaths = [
-      process.env['LOCALAPPDATA'] + '\\Google\\Chrome\\Application\\chrome.exe',
-      process.env['PROGRAMFILES'] + '\\Google\\Chrome\\Application\\chrome.exe',
-      process.env['ProgramFiles(x86)'] + '\\Google\\Chrome\\Application\\chrome.exe'
-    ];
-    for (const chromePath of chromePaths) {
-      if (fs.existsSync(chromePath)) {
-        exec('"' + chromePath + '" --app="' + url + '" --window-size=420,780 --no-first-run --disable-extensions', (err) => {
-          if (err) {
-            exec('start "" "' + url + '"');
-          }
-        });
-        opened = true;
-        break;
-      }
-    }
-  }
-
-  // 最终 fallback
-  if (!opened) {
-    exec('start "" "' + url + '"');
-  }
+app.on('window-all-closed', () => {
+  app.quit();
 });
 
 // 全局异常捕获

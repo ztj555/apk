@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoDial</title>
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #F0C040;
+    --gold-dark: #8B6914;
+    --bg: #111318;
+    --bg2: #1A1D24;
+    --bg3: #22262F;
+    --text: #E8DCC8;
+    --text2: #A09070;
+    --green: #2ECC71;
+    --red: #E74C3C;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    color: var(--text);
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  .float-bar {
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg2);
+    border: 1px solid var(--gold-dark);
+    border-radius: 28px;
+    padding: 0 14px 0 10px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    cursor: move;
+    user-select: none;
+    transition: box-shadow 0.2s;
+  }
+  .float-bar:hover { border-color: var(--gold); box-shadow: 0 4px 30px rgba(201,168,76,0.15); }
+  .float-bar.dragging { box-shadow: 0 8px 32px rgba(0,0,0,0.7); opacity: 0.9; }
+  .fb-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    flex-shrink: 0;
+    animation: pulse 1.5s infinite;
+  }
+  .fb-dot.off {
+    background: var(--red);
+    box-shadow: 0 0 6px var(--red);
+    animation: none;
+  }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+  .fb-scan-btn {
+    background: var(--bg);
+    border: 1px solid var(--gold-dark);
+    border-radius: 14px;
+    padding: 4px 10px;
+    color: var(--gold-light);
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .fb-scan-btn:hover { background: var(--bg3); border-color: var(--gold); }
+  .fb-scan-btn:active { transform: scale(0.95); }
+  .fb-scan-btn.scanning { pointer-events: none; opacity: 0.6; }
+  .fb-input {
+    background: var(--bg);
+    border: 1px solid var(--bg3);
+    border-radius: 14px;
+    padding: 4px 10px;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    width: 120px;
+    outline: none;
+    letter-spacing: 1px;
+    transition: border-color 0.15s;
+  }
+  .fb-input::placeholder { color: var(--text2); font-size: 11px; font-weight: 400; }
+  .fb-input:focus { border-color: var(--gold); }
+  .fb-dial-btn {
+    background: linear-gradient(135deg, #27AE60, #1E8449);
+    border: none; border-radius: 14px;
+    padding: 4px 12px;
+    color: white; font-size: 11px; font-weight: 700;
+    cursor: pointer; white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .fb-dial-btn:hover:not(:disabled) { background: linear-gradient(135deg, #2ECC71, #27AE60); }
+  .fb-dial-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.5; }
+  .toast {
+    position: fixed; bottom: 52px; left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: var(--bg3); border: 1px solid var(--gold-dark);
+    border-radius: 8px; padding: 6px 14px;
+    font-size: 11px; color: var(--text);
+    transition: transform 0.25s; z-index: 999; white-space: nowrap;
+    pointer-events: none;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error   { border-color: var(--red);   color: var(--red);   }
+</style>
+</head>
+<body>
+<div class="float-bar" id="floatBar">
+  <div class="fb-dot" id="fbDot"></div>
+  <button class="fb-scan-btn" id="fbScanBtn">读取</button>
+  <input type="text" class="fb-input" id="fbInput" placeholder="扫描结果..." readonly>
+  <button class="fb-dial-btn" id="fbDialBtn" disabled>&#x1F4DE; 拨打</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const api = window.api;
+let isConnected = false;
+
+// ==================== 拖拽 ====================
+(function() {
+  const bar = document.getElementById('floatBar');
+  let dragging = false, offsetX = 0, offsetY = 0;
+
+  bar.addEventListener('mousedown', onDown);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+
+  function onDown(e) {
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+    dragging = true;
+    bar.classList.add('dragging');
+    const rect = bar.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    api.send('floatbar-move', { x: e.screenX - offsetX, y: e.screenY - offsetY });
+    e.preventDefault();
+  }
+  function onUp() {
+    if (!dragging) return;
+    dragging = false;
+    bar.classList.remove('dragging');
+  }
+})();
+
+// ==================== 按钮 ====================
+document.getElementById('fbScanBtn').addEventListener('click', scanScreen);
+document.getElementById('fbDialBtn').addEventListener('click', dialFromFloat);
+
+// ==================== IPC 事件 ====================
+api.on('status-update', (data) => {
+  isConnected = data.connected;
+  const dot = document.getElementById('fbDot');
+  const dialBtn = document.getElementById('fbDialBtn');
+  if (data.connected) {
+    dot.className = 'fb-dot';
+    dialBtn.disabled = !document.getElementById('fbInput').value;
+  } else {
+    dot.className = 'fb-dot off';
+    dialBtn.disabled = true;
+  }
+});
+
+api.on('dial-sent', (data) => {
+  showToast('已发送: ' + data.number, 'success');
+});
+
+api.on('dial-result', (data) => {
+  showToast(data.number + ' ' + (data.status === 'ok' ? '成功' : '失败'), data.status === 'ok' ? 'success' : 'error');
+});
+
+api.on('error', (data) => {
+  showToast(data.message, 'error');
+});
+
+// ==================== OCR 扫描 ====================
+async function scanScreen() {
+  const btn = document.getElementById('fbScanBtn');
+  const fbInput = document.getElementById('fbInput');
+  const fbDialBtn = document.getElementById('fbDialBtn');
+  btn.classList.add('scanning');
+  btn.textContent = '扫描中';
+  fbInput.value = '';
+  fbDialBtn.disabled = true;
+
+  // 获取悬浮条位置
+  const pos = await new Promise(resolve => {
+    api.send('floatbar-get-position');
+    api.once('floatbar-position-reply', (data) => resolve(data));
+  });
+
+  const scanW = 189;
+  const scanH = 400;
+  const scanX = pos.x - scanW - 10;
+  const scanY = pos.y;
+
+  try {
+    const data = await api.invoke('scan-screen', scanX, scanY, scanW, scanH);
+    btn.classList.remove('scanning');
+    btn.textContent = '读取';
+    if (data.error) {
+      showToast('OCR失败: ' + data.error, 'error');
+      return;
+    }
+    if (data.phone) {
+      fbInput.value = data.phone;
+      fbDialBtn.disabled = !isConnected;
+      showToast('识别到号码: ' + data.phone, 'success');
+    } else {
+      showToast('未识别到手机号', 'error');
+      fbInput.value = data.text ? data.text.substring(0, 20) : '无结果';
+    }
+  } catch (err) {
+    btn.classList.remove('scanning');
+    btn.textContent = '读取';
+    showToast('扫描失败', 'error');
+  }
+}
+
+function dialFromFloat() {
+  const number = document.getElementById('fbInput').value.trim();
+  if (!number) { showToast('请先扫描号码', 'error'); return; }
+  if (!isConnected) { showToast('手机未连接', 'error'); return; }
+  api.send('dial', number);
+}
+
+let toastTimer = null;
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show ' + (type || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 2500);
+}
+</script>
+</body>
+</html>

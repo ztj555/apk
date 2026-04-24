@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoDial</title>
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #F0C040;
+    --gold-dark: #8B6914;
+    --bg: #111318;
+    --bg2: #1A1D24;
+    --bg3: #22262F;
+    --text: #E8DCC8;
+    --text2: #A09070;
+    --green: #2ECC71;
+    --red: #E74C3C;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  .wrap {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- 自定义标题栏 ---- */
+  .titlebar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--gold-dark);
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+    height: 38px;
+  }
+  .titlebar-btns {
+    display: flex;
+    gap: 2px;
+    -webkit-app-region: no-drag;
+  }
+  .titlebar-btn {
+    width: 26px; height: 26px;
+    background: none; border: none;
+    color: var(--text2);
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .titlebar-btn:hover { background: var(--bg3); color: var(--text); }
+  .titlebar-btn.close:hover { background: var(--red); color: white; }
+  .logo {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gold-light);
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .logo-icon {
+    width: 22px; height: 22px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+  }
+
+  /* ---- 状态栏 ---- */
+  .header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--gold-dark);
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .chips {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    justify-content: center;
+  }
+  .chip {
+    background: var(--bg);
+    border: 1px solid var(--gold-dark);
+    border-radius: 6px;
+    padding: 4px 10px;
+    text-align: center;
+  }
+  .chip .lbl { font-size: 9px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; }
+  .chip .val { font-size: 13px; font-weight: 700; color: var(--gold-light); letter-spacing: 2px; }
+  .chip .val.ip { font-size: 12px; letter-spacing: 0.5px; }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    flex-shrink: 0;
+  }
+  .status-dot.on {
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+  .status-text { font-size: 11px; color: var(--text2); white-space: nowrap; }
+  .topmost-switch {
+    display: flex; align-items: center; gap: 4px;
+    cursor: pointer; user-select: none;
+    flex-shrink: 0;
+  }
+  .topmost-switch input { display: none; }
+  .topmost-switch .sw-track {
+    width: 28px; height: 14px;
+    background: var(--bg3);
+    border-radius: 7px;
+    position: relative;
+    transition: background 0.2s;
+    border: 1px solid var(--bg3);
+  }
+  .topmost-switch .sw-track::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text2);
+    transition: all 0.2s;
+  }
+  .topmost-switch input:checked + .sw-track {
+    background: var(--gold-dark);
+    border-color: var(--gold);
+  }
+  .topmost-switch input:checked + .sw-track::after {
+    left: 16px;
+    background: var(--gold-light);
+  }
+  .topmost-switch .sw-label { font-size: 10px; color: var(--text2); }
+
+  /* ---- 连接成功横幅 ---- */
+  .banner {
+    display: none;
+    background: rgba(46,204,113,0.12);
+    border-bottom: 1px solid var(--green);
+    padding: 6px 14px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--green);
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+  .banner.show { display: block; }
+
+  /* ---- 主内容区 ---- */
+  .body {
+    flex: 1;
+    padding: 12px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+  }
+
+  /* 号码输入框 */
+  .number-box {
+    background: var(--bg2);
+    border: 2px solid var(--gold-dark);
+    border-radius: 10px;
+    padding: 10px 14px;
+    flex-shrink: 0;
+  }
+  .number-box:focus-within { border-color: var(--gold); }
+  .number-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .number-lbl { font-size: 9px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; }
+  .clip-hint { font-size: 9px; color: var(--gold); }
+  .clip-hint.flash { animation: flash 0.4s ease; }
+  @keyframes flash { 50%{ color: var(--gold-light); } }
+  .number-input {
+    background: none; border: none; outline: none;
+    font-size: 24px; font-weight: 700;
+    color: var(--text); width: 100%;
+    letter-spacing: 3px; caret-color: var(--gold);
+  }
+  .number-input::placeholder { color: var(--text2); font-size: 14px; font-weight: 400; letter-spacing: 1px; }
+  .number-actions { display: flex; gap: 6px; margin-top: 6px; }
+  .btn-sm {
+    background: none;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-clear { border: 1px solid var(--bg3); color: var(--text2); }
+  .btn-clear:hover { border-color: var(--red); color: var(--red); }
+
+  /* 拨号盘 */
+  .dialpad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
+    flex-shrink: 0;
+  }
+  .dial-btn {
+    background: var(--bg2);
+    border: 1px solid var(--bg3);
+    border-radius: 10px;
+    padding: 10px 0;
+    cursor: pointer;
+    transition: all 0.12s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+  }
+  .dial-btn:hover { background: var(--bg3); border-color: var(--gold-dark); }
+  .dial-btn:active { transform: scale(0.93); background: rgba(201,168,76,0.1); border-color: var(--gold); }
+  .dial-btn .num { font-size: 18px; font-weight: 600; color: var(--text); line-height: 1; }
+  .dial-btn .sub { font-size: 7px; color: var(--text2); letter-spacing: 2px; text-transform: uppercase; }
+  .dial-btn.del .num { font-size: 16px; color: var(--red); }
+
+  /* 操作按钮 */
+  .action-row { display: flex; gap: 8px; flex-shrink: 0; }
+  .call-btn {
+    flex: 1;
+    padding: 14px;
+    background: linear-gradient(135deg, #27AE60, #1E8449);
+    border: none; border-radius: 12px;
+    color: white; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    letter-spacing: 1px;
+  }
+  .call-btn:hover:not(:disabled) { background: linear-gradient(135deg, #2ECC71, #27AE60); box-shadow: 0 6px 18px rgba(39,174,96,0.35); }
+  .call-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.6; }
+  .hangup-btn {
+    flex: 1;
+    padding: 14px;
+    background: linear-gradient(135deg, #C0392B, #96281B);
+    border: none; border-radius: 12px;
+    color: white; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    letter-spacing: 1px;
+  }
+  .hangup-btn:hover:not(:disabled) { background: linear-gradient(135deg, #E74C3C, #C0392B); }
+  .hangup-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.4; }
+
+  /* ---- 日志区（折叠） ---- */
+  .log-section { flex-shrink: 0; }
+  .log-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 10px;
+    background: var(--bg2);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--text2);
+    border: 1px solid var(--bg3);
+    transition: border-color 0.2s;
+  }
+  .log-toggle:hover { border-color: var(--gold-dark); }
+  .log-toggle .arrow { transition: transform 0.2s; font-size: 10px; }
+  .log-toggle.open .arrow { transform: rotate(180deg); }
+  .log-body {
+    display: none;
+    max-height: 130px;
+    overflow-y: auto;
+    padding: 6px 8px;
+    gap: 4px;
+    flex-direction: column;
+    background: var(--bg2);
+    border-radius: 0 0 8px 8px;
+    border: 1px solid var(--bg3);
+    border-top: none;
+    margin-top: -1px;
+  }
+  .log-body.open { display: flex; }
+  .log-body::-webkit-scrollbar { width: 3px; }
+  .log-body::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+  .log-entry {
+    display: flex; align-items: baseline; gap: 6px;
+    font-size: 11px; padding: 3px 6px;
+    border-radius: 4px;
+    background: var(--bg);
+    border-left: 2px solid var(--bg3);
+    animation: fadein 0.2s;
+  }
+  @keyframes fadein { from{opacity:0;} to{opacity:1;} }
+  .log-entry.success { border-left-color: var(--green); }
+  .log-entry.error   { border-left-color: var(--red);   }
+  .log-entry.info    { border-left-color: var(--gold);  }
+  .log-entry .lt { color: var(--text2); flex-shrink: 0; font-size: 10px; }
+  .log-entry .lm { color: var(--text); }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 12px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--bg3); border: 1px solid var(--gold-dark);
+    border-radius: 8px; padding: 8px 18px;
+    font-size: 12px; color: var(--text);
+    transition: transform 0.25s; z-index: 999; white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error   { border-color: var(--red);   color: var(--red);   }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- 自定义标题栏 -->
+  <div class="titlebar">
+    <div class="titlebar-btns">
+      <button class="titlebar-btn" id="btnMinimize">&#x2500;</button>
+      <button class="titlebar-btn close" id="btnClose">&#x2715;</button>
+    </div>
+    <div class="logo"><div class="logo-icon">&#x1F4DE;</div>AutoDial</div>
+  </div>
+
+  <!-- 状态栏 -->
+  <div class="header">
+    <div class="chips">
+      <div class="chip"><div class="lbl">IP</div><div class="val ip" id="localIP">&#x2026;</div></div>
+      <div class="chip"><div class="lbl">配对码</div><div class="val" id="pinCode">----</div></div>
+    </div>
+    <div class="status-dot" id="statusDot"></div>
+    <div class="status-text" id="statusText">等待连接</div>
+    <label class="topmost-switch" title="窗口置顶">
+      <input type="checkbox" id="topmostToggle">
+      <span class="sw-track"></span>
+      <span class="sw-label">置顶</span>
+    </label>
+  </div>
+
+  <div class="banner" id="banner">&#x2705; 手机已连接，可以拨号</div>
+
+  <div class="body">
+    <div class="number-box">
+      <div class="number-row">
+        <span class="number-lbl">号码</span>
+        <span class="clip-hint" id="clipHint">&#x1F4CB; 已跟随剪贴板</span>
+      </div>
+      <input type="text" class="number-input" id="numberInput"
+             placeholder="复制号码自动出现&#x2026;" maxlength="20"
+             inputmode="tel" autocomplete="off">
+      <div class="number-actions">
+        <button class="btn-sm btn-clear" id="btnClear">清除</button>
+      </div>
+    </div>
+
+    <div class="dialpad">
+      <button class="dial-btn" data-key="1"><span class="num">1</span></button>
+      <button class="dial-btn" data-key="2"><span class="num">2</span><span class="sub">ABC</span></button>
+      <button class="dial-btn" data-key="3"><span class="num">3</span><span class="sub">DEF</span></button>
+      <button class="dial-btn" data-key="4"><span class="num">4</span><span class="sub">GHI</span></button>
+      <button class="dial-btn" data-key="5"><span class="num">5</span><span class="sub">JKL</span></button>
+      <button class="dial-btn" data-key="6"><span class="num">6</span><span class="sub">MNO</span></button>
+      <button class="dial-btn" data-key="7"><span class="num">7</span><span class="sub">PQRS</span></button>
+      <button class="dial-btn" data-key="8"><span class="num">8</span><span class="sub">TUV</span></button>
+      <button class="dial-btn" data-key="9"><span class="num">9</span><span class="sub">WXYZ</span></button>
+      <button class="dial-btn" data-key="*"><span class="num">&#x2731;</span></button>
+      <button class="dial-btn" data-key="0"><span class="num">0</span><span class="sub">+</span></button>
+      <button class="dial-btn del" data-key="del"><span class="num">&#x232B;</span></button>
+    </div>
+
+    <div class="action-row">
+      <button class="call-btn" id="callBtn" disabled>&#x1F4DE; 拨号</button>
+      <button class="hangup-btn" id="hangupBtn" disabled>&#x1F4F5; 挂断</button>
+    </div>
+
+    <div class="log-section">
+      <div class="log-toggle" id="logToggle">
+        <span>&#x1F4DD; 日志</span>
+        <span class="arrow">&#x25BC;</span>
+      </div>
+      <div class="log-body" id="logBody"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const api = window.api;
+
+let isConnected = false;
+let lastClipboard = '';
+let clipboardTimer = null;
+let logOpen = false;
+
+// ==================== 标题栏按钮 ====================
+document.getElementById('btnMinimize').addEventListener('click', () => {
+  api.send('window-control', 'minimize');
+});
+document.getElementById('btnClose').addEventListener('click', () => {
+  api.send('window-control', 'close');
+});
+
+// ==================== 置顶开关 ====================
+document.getElementById('topmostToggle').addEventListener('change', function() {
+  api.send('set-topmost', this.checked);
+});
+
+// ==================== 拨号盘事件 ====================
+document.querySelectorAll('.dial-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const key = btn.getAttribute('data-key');
+    if (key === 'del') {
+      deleteLast();
+    } else {
+      pressKey(key);
+    }
+  });
+});
+
+document.getElementById('btnClear').addEventListener('click', clearNumber);
+document.getElementById('callBtn').addEventListener('click', dial);
+document.getElementById('hangupBtn').addEventListener('click', hangup);
+document.getElementById('logToggle').addEventListener('click', toggleLog);
+
+// ==================== 初始化 ====================
+async function init() {
+  try {
+    const info = await api.invoke('get-info');
+    document.getElementById('localIP').textContent = info.ip;
+    document.getElementById('pinCode').textContent = info.pin;
+    if (info.connected) setPhoneConnected(true, null);
+    if (info.firewall === 'warning') addLog('error', '防火墙可能拦截连接，请以管理员运行');
+  } catch (e) {
+    setTimeout(init, 1000);
+  }
+
+  pollClipboard();
+
+  // IPC 事件监听
+  ipcMainOn('status-update', (data) => setPhoneConnected(data.connected, data.phoneIP));
+  ipcMainOn('dial-result', (data) => {
+    addLog(data.status === 'ok' ? 'success' : 'error', data.number + ' ' + (data.status === 'ok' ? '&#x2713;' : '&#x2717;'));
+  });
+  ipcMainOn('dial-sent', (data) => {
+    addLog('success', '&#x1F4DE; 已发送: ' + data.number);
+  });
+  ipcMainOn('hangup-sent', () => {
+    addLog('info', '已发送挂断');
+  });
+  ipcMainOn('server-log', (data) => {
+    const lvl = data.level === 'error' ? 'error' : data.level === 'warn' ? 'error' : 'info';
+    addLog(lvl, '&#x1F5A5; ' + data.text);
+  });
+  ipcMainOn('error', (data) => {
+    showToast(data.message, 'error');
+    addLog('error', data.message);
+  });
+}
+
+function ipcMainOn(channel, callback) {
+  api.on(channel, (data) => callback(data));
+}
+
+function setPhoneConnected(connected, phoneIP) {
+  isConnected = connected;
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  const banner = document.getElementById('banner');
+  document.getElementById('callBtn').disabled = !connected;
+  document.getElementById('hangupBtn').disabled = !connected;
+  if (connected) {
+    dot.className = 'status-dot on';
+    txt.textContent = phoneIP ? phoneIP : '已连接';
+    banner.className = 'banner show';
+    addLog('success', '手机已连接' + (phoneIP ? ' ' + phoneIP : ''));
+    showToast('手机已连接！', 'success');
+  } else {
+    dot.className = 'status-dot';
+    txt.textContent = '等待连接';
+    banner.className = 'banner';
+    addLog('error', '手机已断开');
+  }
+}
+
+// ==================== 拨号盘 ====================
+function pressKey(key) {
+  const inp = document.getElementById('numberInput');
+  inp.value += key; inp.focus();
+}
+function deleteLast() {
+  const inp = document.getElementById('numberInput');
+  inp.value = inp.value.slice(0, -1);
+}
+function clearNumber() { document.getElementById('numberInput').value = ''; }
+
+function dial() {
+  const number = document.getElementById('numberInput').value.trim().replace(/\s/g, '');
+  if (!number) { showToast('请输入号码', 'error'); return; }
+  if (!isConnected) { showToast('手机未连接', 'error'); return; }
+  api.send('dial', number);
+  addLog('info', '发送拨号: ' + number);
+}
+function hangup() {
+  if (!isConnected) { showToast('手机未连接', 'error'); return; }
+  api.send('hangup');
+  addLog('info', '发送挂断');
+  showToast('已发送挂断指令');
+}
+
+// ==================== 剪贴板 ====================
+function extractPhone(text) {
+  const m = text.match(/1[3-9]\d{9}|0\d{2,3}[-\s]?\d{7,8}/);
+  return m ? m[0].replace(/[-\s]/g, '') : null;
+}
+
+function pollClipboard() {
+  api.invoke('read-clipboard').then(d => {
+    if (d.text && d.text !== lastClipboard) {
+      lastClipboard = d.text;
+      const phone = extractPhone(d.text);
+      if (phone) {
+        const inp = document.getElementById('numberInput');
+        inp.value = phone;
+        const hint = document.getElementById('clipHint');
+        hint.classList.add('flash');
+        setTimeout(() => hint.classList.remove('flash'), 400);
+      }
+    }
+  }).catch(() => {}).finally(() => {
+    clipboardTimer = setTimeout(pollClipboard, 1000);
+  });
+}
+
+// ==================== 日志 ====================
+function toggleLog() {
+  logOpen = !logOpen;
+  document.getElementById('logToggle').classList.toggle('open', logOpen);
+  document.getElementById('logBody').classList.toggle('open', logOpen);
+}
+
+function addLog(type, msg) {
+  const body = document.getElementById('logBody');
+  const now = new Date();
+  const t = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+  const el = document.createElement('div');
+  el.className = 'log-entry ' + type;
+  el.innerHTML = '<span class="lt">' + t + '</span><span class="lm">' + msg + '</span>';
+  body.appendChild(el);
+  body.scrollTop = body.scrollHeight;
+  while (body.children.length > 80) body.removeChild(body.firstChild);
+  if (!logOpen) { logOpen = true; document.getElementById('logToggle').classList.add('open'); body.classList.add('open'); }
+}
+
+let toastTimer = null;
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show ' + (type || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 2500);
+}
+
+// 键盘快捷键
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') dial();
+  if (e.key === 'Backspace' && document.activeElement.id !== 'numberInput') deleteLast();
+});
+
+init();
+</script>
+</body>
+</html>

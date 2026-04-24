@@ -1,21 +1,37 @@
 {
   "name": "autodial-pc",
-  "version": "2.0.1",
-  "description": "AutoDial 电脑端 - 一键拨号",
+  "version": "3.0.0",
+  "description": "AutoDial 电脑端 - 一键拨号 (Electron)",
   "main": "main.js",
   "scripts": {
-    "start": "node main.js",
-    "build-win": "pkg main.js --target node18-win-x64 --output AutoDial-PC.exe --compress GZip"
+    "start": "electron .",
+    "build-win": "electron-builder --win --x64 --dir",
+    "dist": "electron-builder --win --x64"
   },
-  "bin": "main.js",
-  "pkg": {
-    "assets": [],
-    "targets": ["node18-win-x64"]
+  "build": {
+    "appId": "com.autodial.pc",
+    "productName": "AutoDial",
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": []
   },
   "dependencies": {
     "ws": "^8.17.0"
   },
   "devDependencies": {
-    "pkg": "^5.8.1"
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
   }
 }

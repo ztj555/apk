@@ -60,12 +60,10 @@ jobs:
 
       - name: Build EXE
         working-directory: pc-app
-        run: npx pkg main.js --target node18-win-x64 --output AutoDial-PC.exe --compress GZip
+        run: npx electron-builder --win --x64 --dir --publish never
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: AutoDial-PC-EXE
-          path: |
-            pc-app/AutoDial-PC.exe
-            pc-app/AutoDial-PC-Silent.vbs
+          path: pc-app/dist/win-unpacked/AutoDial.exe
