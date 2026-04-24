@@ -66,4 +66,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AutoDial-PC-EXE
-          path: pc-app/AutoDial-PC.exe
+          path: |
+            pc-app/AutoDial-PC.exe
+            pc-app/AutoDial-PC-Silent.vbs

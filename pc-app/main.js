@@ -9,6 +9,54 @@ const path = require('path');
 const { exec, execSync } = require('child_process');
 const crypto = require('crypto');
 
+// ==================== 隐藏控制台：劫持 console ====================
+// 所有 console.log/error/warn 的内容将存入缓冲区，并推送给 UI WebSocket 客户端
+// 控制台黑窗口通过 .vbs 静默启动彻底隐藏
+const _logBuffer = []; // 启动阶段（WSS 还没就绪前）暂存的日志
+
+function _levelToType(level) {
+  if (level === 'error') return 'error';
+  if (level === 'warn')  return 'warn';
+  return 'info';
+}
+
+function _pushLog(level, text) {
+  const entry = { level: _levelToType(level), text, ts: Date.now() };
+  _logBuffer.push(entry);
+  if (_logBuffer.length > 200) _logBuffer.shift();
+  // 若 wss 已就绪，广播给所有 UI 客户端
+  if (typeof wss !== 'undefined') {
+    _broadcastServerLog(entry);
+  }
+}
+
+function _broadcastServerLog(entry) {
+  try {
+    wss.clients.forEach(client => {
+      if (!client.isPhone && client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'server_log', level: entry.level, text: entry.text }));
+      }
+    });
+  } catch (e) {}
+}
+
+// 新建 UI 客户端连上时，补发缓冲区里的历史日志
+function _flushLogBuffer(ws) {
+  _logBuffer.forEach(entry => {
+    try {
+      ws.send(JSON.stringify({ type: 'server_log', level: entry.level, text: entry.text }));
+    } catch (e) {}
+  });
+}
+
+// 劫持 console
+const _origLog   = console.log.bind(console);
+const _origError = console.error.bind(console);
+const _origWarn  = console.warn.bind(console);
+console.log   = (...args) => { const t = args.join(' '); _origLog(t);   _pushLog('info',  t); };
+console.error = (...args) => { const t = args.join(' '); _origError(t); _pushLog('error', t); };
+console.warn  = (...args) => { const t = args.join(' '); _origWarn(t);  _pushLog('warn',  t); };
+
 // ==================== 内嵌 HTML ====================
 const HTML_CONTENT = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -362,6 +410,10 @@ function connect() {
       addLog('error', msg.message);
     } else if (msg.type === 'hangup_sent') {
       addLog('info', '已发送挂断');
+    } else if (msg.type === 'server_log') {
+      // 服务端日志 → 显示到日志框
+      const lvl = msg.level === 'error' ? 'error' : msg.level === 'warn' ? 'error' : 'info';
+      addLog(lvl, '🖥 ' + msg.text);
     }
   };
   ws.onclose = () => { clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connect, 2000); };
@@ -637,6 +689,10 @@ const wss = new WebSocket.Server({ server });
 wss.on('connection', (ws, req) => {
   const clientIP = req.socket.remoteAddress.replace('::ffff:', '');
   console.log('[连接] 新客户端: ' + clientIP);
+
+  // 新 UI 客户端连接，补发历史日志
+  // (手机端握手后 isPhone=true，在此之前先补发，手机端消息里会忽略 server_log)
+  _flushLogBuffer(ws);
 
   ws.on('message', (data) => {
     try {
