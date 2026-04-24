@@ -325,6 +325,72 @@ const HTML_CONTENT = `<!DOCTYPE html>
   .toast.show { transform: translateX(-50%) translateY(0); }
   .toast.success { border-color: var(--green); color: var(--green); }
   .toast.error   { border-color: var(--red);   color: var(--red);   }
+
+  /* ---- 悬浮OCR横条 ---- */
+  .float-bar {
+    position: fixed; bottom: 16px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg2);
+    border: 1px solid var(--gold-dark);
+    border-radius: 28px;
+    padding: 6px 14px 6px 10px;
+    z-index: 1000;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    transition: all 0.2s;
+  }
+  .float-bar:hover { border-color: var(--gold); box-shadow: 0 4px 30px rgba(201,168,76,0.15); }
+  .fb-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    flex-shrink: 0;
+    animation: pulse 1.5s infinite;
+  }
+  .fb-scan-btn {
+    background: var(--bg);
+    border: 1px solid var(--gold-dark);
+    border-radius: 14px;
+    padding: 4px 10px;
+    color: var(--gold-light);
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .fb-scan-btn:hover { background: var(--bg3); border-color: var(--gold); }
+  .fb-scan-btn:active { transform: scale(0.95); }
+  .fb-scan-btn.scanning { pointer-events: none; opacity: 0.6; }
+  .fb-scan-btn.scanning::after { content: ' ...'; }
+  .fb-input {
+    background: var(--bg);
+    border: 1px solid var(--bg3);
+    border-radius: 14px;
+    padding: 4px 10px;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    width: 120px;
+    outline: none;
+    letter-spacing: 1px;
+    transition: border-color 0.15s;
+  }
+  .fb-input::placeholder { color: var(--text2); font-size: 11px; font-weight: 400; }
+  .fb-input:focus { border-color: var(--gold); }
+  .fb-dial-btn {
+    background: linear-gradient(135deg, #27AE60, #1E8449);
+    border: none; border-radius: 14px;
+    padding: 4px 12px;
+    color: white; font-size: 11px; font-weight: 700;
+    cursor: pointer; white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .fb-dial-btn:hover:not(:disabled) { background: linear-gradient(135deg, #2ECC71, #27AE60); }
+  .fb-dial-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.5; }
 </style>
 </head>
 <body>
@@ -385,6 +451,13 @@ const HTML_CONTENT = `<!DOCTYPE html>
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<!-- 悬浮OCR横条 -->
+<div class="float-bar">
+  <div class="fb-dot"></div>
+  <button class="fb-scan-btn" id="fbScanBtn" onclick="scanScreen()">读取</button>
+  <input type="text" class="fb-input" id="fbInput" placeholder="扫描结果…" readonly>
+  <button class="fb-dial-btn" id="fbDialBtn" onclick="dialFromFloat()" disabled>&#x1F4DE; 拨打</button>
+</div>
 <script>
 let ws = null;
 let isConnected = false;
@@ -503,6 +576,69 @@ function pollClipboard() {
     })
     .catch(() => {})
     .finally(() => { clipboardTimer = setTimeout(pollClipboard, 1000); });
+}
+
+// ---- 悬浮横条：OCR截屏扫描 ----
+function scanScreen() {
+  const btn = document.getElementById('fbScanBtn');
+  const fbInput = document.getElementById('fbInput');
+  const fbDialBtn = document.getElementById('fbDialBtn');
+  btn.classList.add('scanning');
+  btn.textContent = '扫描中';
+  fbInput.value = '';
+  fbDialBtn.disabled = true;
+
+  // 获取当前窗口在屏幕上的位置，以计算周围189px区域
+  // 由于是 App 模式，screenX/screenY 就是窗口左上角
+  const winX = window.screenX || 0;
+  const winY = window.screenY || 0;
+  const winW = window.outerWidth || 420;
+  // 截取窗口右侧区域（向外延伸189px）
+  const scanX = winX + winW + 10;
+  const scanY = winY;
+  const scanW = 189;
+  const scanH = 300;
+
+  fetch('/api/ocr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ x: scanX, y: scanY, w: scanW, h: scanH })
+  })
+  .then(r => r.json())
+  .then(data => {
+    btn.classList.remove('scanning');
+    btn.textContent = '读取';
+    if (data.error) {
+      showToast('OCR失败: ' + data.error, 'error');
+      return;
+    }
+    if (data.phone) {
+      fbInput.value = data.phone;
+      fbDialBtn.disabled = !isConnected;
+      showToast('识别到号码: ' + data.phone, 'success');
+      addLog('success', 'OCR识别: ' + data.phone);
+      // 同时更新主界面号码框
+      document.getElementById('numberInput').value = data.phone;
+    } else {
+      showToast('未识别到手机号', 'error');
+      fbInput.value = data.text ? data.text.substring(0, 20) : '无结果';
+    }
+  })
+  .catch(err => {
+    btn.classList.remove('scanning');
+    btn.textContent = '读取';
+    showToast('扫描失败', 'error');
+    addLog('error', 'OCR扫描失败: ' + err.message);
+  });
+}
+
+function dialFromFloat() {
+  const number = document.getElementById('fbInput').value.trim();
+  if (!number) { showToast('请先扫描号码', 'error'); return; }
+  if (!isConnected) { showToast('手机未连接', 'error'); return; }
+  if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('服务异常', 'error'); return; }
+  ws.send(JSON.stringify({ type: 'dial', number }));
+  addLog('info', '悬浮条拨号: ' + number);
 }
 
 function toggleLog() {
@@ -675,6 +811,81 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ text: '' }));
     }
+    return;
+  }
+
+  // OCR 接口：截取屏幕区域（悬浮窗周围189px，约5cm@96dpi），用 WinRT OCR 识别文字
+  if (req.url === '/api/ocr' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      let x = 0, y = 0, w = 400, h = 200;
+      try {
+        const params = JSON.parse(body);
+        if (typeof params.x === 'number') x = params.x;
+        if (typeof params.y === 'number') y = params.y;
+        if (typeof params.w === 'number') w = params.w;
+        if (typeof params.h === 'number') h = params.h;
+      } catch (e) {}
+
+      const psScript = `
+[Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType = WindowsRuntime] | Out-Null
+[Windows.Media.Ocr.OcrEngine, Windows.Media.Ocr, ContentType = WindowsRuntime] | Out-Null
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+[Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime] | Out-Null
+
+# 截屏
+Add-Type -AssemblyName System.Windows.Forms
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen
+$bmp = New-Object System.Drawing.Bitmap($w, $h)
+$gfx = [System.Drawing.Graphics]::FromImage($bmp)
+$gfx.CopyFromScreen($x, $y, 0, 0, (New-Object System.Drawing.Size($w, $h)))
+
+# 保存到临时文件
+$tmpPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'autodial_ocr.bmp')
+$bmp.Save($tmpPath, [System.Drawing.Imaging.ImageFormat]::Bmp)
+$gfx.Dispose()
+$bmp.Dispose()
+
+# OCR
+$file = [Windows.Storage.StorageFile]::GetFileFromPathAsync($tmpPath).AsTask().GetAwaiter().GetResult()
+$stream = $file.OpenAsync([Windows.Storage.FileAccessMode]::Read).AsTask().GetAwaiter().GetResult()
+$decoder = [Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream).AsTask().GetAwaiter().GetResult()
+$softwareBitmap = $decoder.GetSoftwareBitmapAsync([Windows.Graphics.Imaging.BitmapPixelFormat]::Bgra8, [Windows.Graphics.Imaging.BitmapAlphaMode]::Premultiplied).AsTask().GetAwaiter().GetResult()
+$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new('zh-Hans-CN'))
+if ($null -eq $engine) { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }
+$result = $engine.RecognizeAsync($softwareBitmap).AsTask().GetAwaiter().GetResult()
+$text = $result.Text
+$stream.Dispose()
+Remove-Item $tmpPath -Force -ErrorAction SilentlyContinue
+Write-Output $text
+`;
+      try {
+        const ocrText = execSync(
+          'powershell -NoProfile -Command "' + psScript.replace(/"/g, '\\"').replace(/\n/g, ' ') + '"',
+          { timeout: 10000, encoding: 'utf8', maxBuffer: 1024 * 1024 }
+        ).trim();
+
+        // 从 OCR 结果中提取11位手机号
+        const phoneMatch = ocrText.match(/1[3-9]\d{9}/g);
+        const phone = phoneMatch ? phoneMatch[0] : null;
+
+        // 如果找到手机号，写入系统剪贴板
+        if (phone && process.platform === 'win32') {
+          try {
+            execSync('powershell -command "Set-Clipboard -Value \'' + phone + '\'"', { timeout: 1000 });
+          } catch (e) {}
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ text: ocrText, phone }));
+        console.log('[OCR] 识别结果: ' + (phone ? '发现号码 ' + phone : '未发现手机号'));
+      } catch (e) {
+        console.error('[OCR] 识别失败:', e.message);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ text: '', phone: null, error: e.message }));
+      }
+    });
     return;
   }
 
@@ -863,7 +1074,7 @@ server.listen(PORT, '0.0.0.0', () => {
   ];
   for (const edgePath of edgePaths) {
     if (fs.existsSync(edgePath)) {
-  exec('"' + edgePath + '" --app="' + url + '" --window-size=420,780 --no-first-run --disable-extensions', (err) => {
+  exec('"' + edgePath + '" --app="' + url + '" --window-size=420,780 --always-on-top --no-first-run --disable-extensions', (err) => {
         if (err) {
           // Edge 失败，fallback 到默认浏览器
           exec('start "" "' + url + '"');
@@ -883,7 +1094,7 @@ server.listen(PORT, '0.0.0.0', () => {
     ];
     for (const chromePath of chromePaths) {
       if (fs.existsSync(chromePath)) {
-        exec('"' + chromePath + '" --app="' + url + '" --window-size=420,780 --no-first-run --disable-extensions', (err) => {
+        exec('"' + chromePath + '" --app="' + url + '" --window-size=420,780 --always-on-top --no-first-run --disable-extensions', (err) => {
           if (err) {
             exec('start "" "' + url + '"');
           }
