@@ -122,7 +122,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const api = window.api;
+/* window.api 通过 preload.js contextBridge 注入 */
 let isConnected = false;
 
 // ==================== 拖拽 ====================
@@ -145,7 +145,7 @@ let isConnected = false;
   }
   function onMove(e) {
     if (!dragging) return;
-    api.send('floatbar-move', { x: e.screenX - offsetX, y: e.screenY - offsetY });
+    window.api.send('floatbar-move', { x: e.screenX - offsetX, y: e.screenY - offsetY });
     e.preventDefault();
   }
   function onUp() {
@@ -160,7 +160,7 @@ document.getElementById('fbScanBtn').addEventListener('click', scanScreen);
 document.getElementById('fbDialBtn').addEventListener('click', dialFromFloat);
 
 // ==================== IPC 事件 ====================
-api.on('status-update', (data) => {
+window.api.on('status-update', (data) => {
   isConnected = data.connected;
   const dot = document.getElementById('fbDot');
   const dialBtn = document.getElementById('fbDialBtn');
@@ -173,15 +173,15 @@ api.on('status-update', (data) => {
   }
 });
 
-api.on('dial-sent', (data) => {
+window.api.on('dial-sent', (data) => {
   showToast('已发送: ' + data.number, 'success');
 });
 
-api.on('dial-result', (data) => {
+window.api.on('dial-result', (data) => {
   showToast(data.number + ' ' + (data.status === 'ok' ? '成功' : '失败'), data.status === 'ok' ? 'success' : 'error');
 });
 
-api.on('error', (data) => {
+window.api.on('error', (data) => {
   showToast(data.message, 'error');
 });
 
@@ -197,8 +197,8 @@ async function scanScreen() {
 
   // 获取悬浮条位置
   const pos = await new Promise(resolve => {
-    api.send('floatbar-get-position');
-    api.once('floatbar-position-reply', (data) => resolve(data));
+    window.api.send('floatbar-get-position');
+    window.api.once('floatbar-position-reply', (data) => resolve(data));
   });
 
   const scanW = 189;
@@ -207,7 +207,7 @@ async function scanScreen() {
   const scanY = pos.y;
 
   try {
-    const data = await api.invoke('scan-screen', scanX, scanY, scanW, scanH);
+    const data = await window.api.invoke('scan-screen', scanX, scanY, scanW, scanH);
     btn.classList.remove('scanning');
     btn.textContent = '读取';
     if (data.error) {
@@ -233,7 +233,7 @@ function dialFromFloat() {
   const number = document.getElementById('fbInput').value.trim();
   if (!number) { showToast('请先扫描号码', 'error'); return; }
   if (!isConnected) { showToast('手机未连接', 'error'); return; }
-  api.send('dial', number);
+  window.api.send('dial', number);
 }
 
 let toastTimer = null;

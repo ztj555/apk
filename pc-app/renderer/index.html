@@ -405,7 +405,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const api = window.api;
+/* window.api 通过 preload.js contextBridge 注入，不能再用 const api 声明（会冲突） */
 
 let isConnected = false;
 let lastClipboard = '';
@@ -414,15 +414,15 @@ let logOpen = false;
 
 // ==================== 标题栏按钮 ====================
 document.getElementById('btnMinimize').addEventListener('click', () => {
-  api.send('window-control', 'minimize');
+  window.api.send('window-control', 'minimize');
 });
 document.getElementById('btnClose').addEventListener('click', () => {
-  api.send('window-control', 'close');
+  window.api.send('window-control', 'close');
 });
 
 // ==================== 置顶开关 ====================
 document.getElementById('topmostToggle').addEventListener('change', function() {
-  api.send('set-topmost', this.checked);
+  window.api.send('set-topmost', this.checked);
 });
 
 // ==================== 拨号盘事件 ====================
@@ -448,7 +448,7 @@ async function init() {
   let info = null;
   for (let i = 0; i < 5; i++) {
     try {
-      info = await api.invoke('get-info');
+      info = await window.api.invoke('get-info');
       break;
     } catch (e) {
       await new Promise(r => setTimeout(r, 500));
@@ -466,25 +466,25 @@ async function init() {
   pollClipboard();
 
   // IPC 事件监听
-  api.on('status-update', (data) => setPhoneConnected(data.connected, data.phoneIP));
-  api.on('info-push', (data) => {
+  window.api.on('status-update', (data) => setPhoneConnected(data.connected, data.phoneIP));
+  window.api.on('info-push', (data) => {
     document.getElementById('localIP').textContent = data.ip || '--';
     document.getElementById('pinCode').textContent = data.pin || '----';
   });
-  api.on('dial-result', (data) => {
+  window.api.on('dial-result', (data) => {
     addLog(data.status === 'ok' ? 'success' : 'error', data.number + ' ' + (data.status === 'ok' ? '&#x2713;' : '&#x2717;'));
   });
-  api.on('dial-sent', (data) => {
+  window.api.on('dial-sent', (data) => {
     addLog('success', '&#x1F4DE; 已发送: ' + data.number);
   });
-  api.on('hangup-sent', () => {
+  window.api.on('hangup-sent', () => {
     addLog('info', '已发送挂断');
   });
-  api.on('server-log', (data) => {
+  window.api.on('server-log', (data) => {
     const lvl = data.level === 'error' ? 'error' : data.level === 'warn' ? 'error' : 'info';
     addLog(lvl, '&#x1F5A5; ' + data.text);
   });
-  api.on('error', (data) => {
+  window.api.on('error', (data) => {
     showToast(data.message, 'error');
     addLog('error', data.message);
   });
@@ -526,12 +526,12 @@ function dial() {
   const number = document.getElementById('numberInput').value.trim().replace(/\s/g, '');
   if (!number) { showToast('请输入号码', 'error'); return; }
   if (!isConnected) { showToast('手机未连接', 'error'); return; }
-  api.send('dial', number);
+  window.api.send('dial', number);
   addLog('info', '发送拨号: ' + number);
 }
 function hangup() {
   if (!isConnected) { showToast('手机未连接', 'error'); return; }
-  api.send('hangup');
+  window.api.send('hangup');
   addLog('info', '发送挂断');
   showToast('已发送挂断指令');
 }
@@ -543,7 +543,7 @@ function extractPhone(text) {
 }
 
 function pollClipboard() {
-  api.invoke('read-clipboard').then(d => {
+  window.api.invoke('read-clipboard').then(d => {
     if (d.text && d.text !== lastClipboard) {
       lastClipboard = d.text;
       const phone = extractPhone(d.text);
