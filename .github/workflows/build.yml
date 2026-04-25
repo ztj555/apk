@@ -43,29 +43,3 @@ jobs:
         with:
           name: AutoDial-APK-Release
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
-
-  build-exe:
-    runs-on: windows-latest
-    env:
-      ELECTRON_MIRROR: "https://npmmirror.com/mirrors/electron/"
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install dependencies
-        working-directory: pc-app
-        run: npm install --registry=https://registry.npmmirror.com
-
-      - name: Build EXE
-        working-directory: pc-app
-        run: node pack.js
-
-      - name: Upload EXE
-        uses: actions/upload-artifact@v4
-        with:
-          name: AutoDial-PC-EXE
-          path: pc-app/dist-packager/AutoDial-win32-x64/
