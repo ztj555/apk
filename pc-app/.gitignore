@@ -1,0 +1,5 @@
+node_modules/
+dist/
+dist-packager/
+build-output.log
+pack-output.log

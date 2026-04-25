@@ -48,7 +48,6 @@ jobs:
     runs-on: windows-latest
     env:
       ELECTRON_MIRROR: "https://npmmirror.com/mirrors/electron/"
-      ELECTRON_BUILDER_BINARIES_MIRROR: "https://npmmirror.com/mirrors/electron-builder-binaries/"
     steps:
       - uses: actions/checkout@v4
 
@@ -63,10 +62,10 @@ jobs:
 
       - name: Build EXE
         working-directory: pc-app
-        run: npx electron-builder --win --x64 --publish never
+        run: node pack.js
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: AutoDial-PC-EXE
-          path: pc-app/dist/AutoDial-PC.exe
+          path: pc-app/dist-packager/AutoDial-win32-x64/
