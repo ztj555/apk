@@ -27,6 +27,7 @@ class DialService : Service() {
         private const val CHANNEL_ID = "autodial_service"
         private const val NOTIFICATION_ID = 1001
         private const val ACTION_CONNECTION = "com.autodial.CONNECTION_CHANGE"
+        private const val ACTION_NEW_DIAL = "com.autodial.NEW_DIAL"
 
         var isRunning = false
             private set
@@ -56,6 +57,7 @@ class DialService : Service() {
     private var lastIp = ""
     private var manualConnecting = false
     private var wakeLock: PowerManager.WakeLock? = null
+    private lateinit var callLogDb: CallLogDb
 
     // ==================== 生命周期 ====================
 
@@ -63,6 +65,7 @@ class DialService : Service() {
         super.onCreate()
         try {
             isRunning = true
+            callLogDb = CallLogDb(this)
             createNotificationChannel()
             startForeground(NOTIFICATION_ID, buildNotification("AutoDial 运行中"))
 
@@ -86,6 +89,7 @@ class DialService : Service() {
             }
         } catch (e: Exception) {
             isRunning = true
+            callLogDb = CallLogDb(this)
             createNotificationChannel()
             try { startForeground(NOTIFICATION_ID, buildNotification("AutoDial 运行中")) } catch (_: Exception) {}
         }
@@ -273,6 +277,17 @@ class DialService : Service() {
         sendBroadcast(intent)
     }
 
+    private fun notifyNewDial(number: String) {
+        try {
+            val intent = Intent(ACTION_NEW_DIAL).apply {
+                putExtra("number", number)
+                putExtra("time", System.currentTimeMillis())
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
+        } catch (_: Exception) {}
+    }
+
     // ==================== 拨号 ====================
 
     private fun dialNumber(number: String) {
@@ -295,6 +310,8 @@ class DialService : Service() {
                 telecomManager.placeCall(uri, extras)
                 Log.d(TAG, "已拨号(TelecomManager): $number")
                 _sendResult?.invoke(number, "ok")
+                callLogDb.insertDial(number, "ok")
+                notifyNewDial(number)
                 return
             } catch (e: SecurityException) {
                 Log.e(TAG, "TelecomManager无权限: ${e.message}")
@@ -311,9 +328,12 @@ class DialService : Service() {
                 startActivity(intent)
                 Log.d(TAG, "已拨号(ACTION_CALL): $number")
                 _sendResult?.invoke(number, "ok")
+                callLogDb.insertDial(number, "ok")
+                notifyNewDial(number)
             } catch (e: Exception) {
                 Log.e(TAG, "ACTION_CALL也失败: ${e.message}")
                 _sendResult?.invoke(number, "error")
+                callLogDb.insertDial(number, "error")
             }
         } catch (e: Exception) {
             Log.e(TAG, "拨号失败: ${e.message}")

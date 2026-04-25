@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#111318"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center_horizontal">
+
+        <!-- Logo -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="📞 AutoDial"
+            android:textSize="28sp"
+            android:textColor="#F0C040"
+            android:textStyle="bold"
+            android:letterSpacing="0.1" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="电脑一键拨号"
+            android:textSize="14sp"
+            android:textColor="#A09070" />
+
+        <!-- 状态指示 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/statusDot"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:src="@drawable/dot_gray" />
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="未连接"
+                android:textSize="16sp"
+                android:textColor="#A09070" />
+        </LinearLayout>
+
+        <!-- 连接成功横幅 -->
+        <LinearLayout
+            android:id="@+id/connectionBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="#1A3A2A"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/bannerText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✅ 已连接到电脑！等待拨号指令..."
+                android:textColor="#2ECC71"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 配对码输入 -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="输入电脑配对码"
+            android:textColor="#A09070"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/pinInput"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginTop="8dp"
+            android:background="#1A1D24"
+            android:hint="输入电脑屏幕上的4位数字"
+            android:textColorHint="#605040"
+            android:textColor="#E8DCC8"
+            android:textSize="32sp"
+            android:letterSpacing="0.3"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:inputType="number"
+            android:maxLength="4"
+            android:singleLine="true" />
+
+        <!-- 自动发现提示 -->
+        <TextView
+            android:id="@+id/discoveryHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="🔍 请输入配对码开始搜索"
+            android:textColor="#605040"
+            android:textSize="13sp"
+            android:visibility="visible" />
+
+        <!-- 已发现的电脑信息 -->
+        <LinearLayout
+            android:id="@+id/foundPCInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="#1A2A1A"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/foundPCText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✅ 发现电脑: 192.168.x.x"
+                android:textColor="#2ECC71"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- 连接按钮 -->
+        <LinearLayout
+            android:id="@+id/connectBtn"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="28dp"
+            android:background="#C9A84C"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/connectBtnText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="连接"
+                android:textColor="#111318"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 底部提示 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="24dp"
+            android:text="请确保手机和电脑在同一WiFi下\n输入电脑上显示的4位配对码即可自动连接"
+            android:textSize="12sp"
+            android:textColor="#605040"
+            android:gravity="center" />
+
+    </LinearLayout>
+
+</ScrollView>

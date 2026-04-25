@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#111318"
+    android:orientation="vertical">
+
+    <!-- 标题栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="#1A1D24"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📋 通话记录"
+            android:textColor="#F0C040"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/callLogCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0 条记录"
+            android:textColor="#A09070"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 提示文字 -->
+    <TextView
+        android:id="@+id/callLogPermissionHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#2A1A1A"
+        android:gravity="center"
+        android:padding="10dp"
+        android:text="⚠️ 需要通话记录权限才能显示"
+        android:textColor="#E74C3C"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <!-- 通话记录列表 -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/callLogRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- 空状态 -->
+    <LinearLayout
+        android:id="@+id/callLogEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📭"
+            android:textSize="40sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="暂无通话记录"
+            android:textColor="#A09070"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+</LinearLayout>
