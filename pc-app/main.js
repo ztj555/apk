@@ -10,6 +10,15 @@ const fs = require('fs');
 const { exec, execSync } = require('child_process');
 const crypto = require('crypto');
 
+// clipboardy 是 ES Module，需要动态导入
+let clipboardy = null;
+async function getClipboardy() {
+  if (!clipboardy) {
+    clipboardy = await import('clipboardy');
+  }
+  return clipboardy;
+}
+
 // ==================== 日志系统 ====================
 const _logBuffer = [];
 
@@ -85,16 +94,147 @@ const PORT = 35432;
 const DISCOVERY_PORT = 35433;
 
 let phoneSocket = null;
+let phoneIP = null;
 let mainWindow = null;
 let floatBarWindow = null;
+let tray = null;
+let floatBarScale = 1.0;
+const FLOATBAR_MIN_SCALE = 0.7;
+const FLOATBAR_MAX_SCALE = 1.5;
 
 // ==================== 窗口创建 ====================
+
+// 创建托盘图标
+function createTray() {
+  // 程序化生成 16x16 金色电话图标 PNG
+  function createTrayIconPNG() {
+    // 简单的 16x16 金色电话机位图，用 RGBA 手动编码
+    // 背景: 透明, 电话听筒: 金色 (#C9A84C)
+    // 16x16 像素, 每行16像素, RGBA每像素4字节
+    const W = 16, H = 16;
+    const pixels = Buffer.alloc(W * H * 4, 0); // 全透明
+
+    function setPixel(x, y, r, g, b, a) {
+      if (x < 0 || x >= W || y < 0 || y >= H) return;
+      const i = (y * W + x) * 4;
+      pixels[i] = r; pixels[i+1] = g; pixels[i+2] = b; pixels[i+3] = a;
+    }
+
+    // 绘制金色电话听筒（简化的电话图标）
+    const GOLD = [201, 168, 76, 255];
+    const DARK = [139, 105, 20, 255];
+
+    // 听筒主体 - 上半部分
+    for (let y = 3; y <= 8; y++) {
+      for (let x = 4; x <= 11; x++) {
+        setPixel(x, y, ...GOLD);
+      }
+    }
+    // 听筒耳机部分 - 左上
+    for (let y = 2; y <= 5; y++) {
+      for (let x = 3; x <= 5; x++) {
+        setPixel(x, y, ...DARK);
+      }
+    }
+    // 听筒耳机部分 - 右上
+    for (let y = 2; y <= 5; y++) {
+      for (let x = 10; x <= 12; x++) {
+        setPixel(x, y, ...DARK);
+      }
+    }
+    // 听筒底部弧线
+    for (let x = 5; x <= 10; x++) {
+      setPixel(x, 9, ...GOLD);
+    }
+    for (let x = 6; x <= 9; x++) {
+      setPixel(x, 10, ...GOLD);
+    }
+    setPixel(7, 11, ...GOLD);
+    setPixel(8, 11, ...GOLD);
+    // 底座
+    for (let x = 4; x <= 11; x++) {
+      setPixel(x, 12, ...DARK);
+      setPixel(x, 13, ...DARK);
+    }
+
+    // 编码为 PNG（最小有效PNG）
+    const { createHash } = require('crypto');
+    const zlib = require('zlib');
+
+    // 构造原始图像数据（每行前加filter byte 0）
+    const rawData = Buffer.alloc(H * (1 + W * 4));
+    for (let y = 0; y < H; y++) {
+      rawData[y * (1 + W * 4)] = 0; // filter: None
+      pixels.copy(rawData, y * (1 + W * 4) + 1, y * W * 4, (y + 1) * W * 4);
+    }
+    const compressed = zlib.deflateSync(rawData);
+
+    // PNG 文件结构
+    function crc32(buf) {
+      const table = new Int32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        table[i] = c;
+      }
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < buf.length; i++) crc = table[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function chunk(type, data) {
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length);
+      const typeAndData = Buffer.concat([Buffer.from(type), data]);
+      const crcBuf = Buffer.alloc(4);
+      crcBuf.writeUInt32BE(crc32(typeAndData));
+      return Buffer.concat([len, typeAndData, crcBuf]);
+    }
+
+    const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+    // IHDR
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(W, 0);
+    ihdr.writeUInt32BE(H, 4);
+    ihdr[8] = 8;  // bit depth
+    ihdr[9] = 6;  // color type: RGBA
+    ihdr[10] = 0; // compression
+    ihdr[11] = 0; // filter
+    ihdr[12] = 0; // interlace
+
+    return nativeImage.createFromBuffer(
+      Buffer.concat([signature, chunk('IHDR', ihdr), chunk('IDAT', compressed), chunk('IEND', Buffer.alloc(0))]),
+      { width: W, height: H }
+    );
+  }
+
+  const trayIcon = createTrayIconPNG();
+  tray = new Tray(trayIcon);
+  tray.setToolTip('AutoDial 一键拨号');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示主窗口', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+    { type: 'separator' },
+    { label: '显示悬浮条', click: () => { if (floatBarWindow) floatBarWindow.show(); } },
+    { label: '隐藏悬浮条', click: () => { if (floatBarWindow) floatBarWindow.hide(); } },
+    { type: 'separator' },
+    { label: '退出', click: () => { app.isQuitting = true; app.quit(); } }
+  ]));
+
+  tray.on('double-click', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 420,
     height: 780,
-    minWidth: 380,
-    minHeight: 600,
+    minWidth: 320,
+    minHeight: 520,
     frame: false,           // 无边框
     transparent: false,
     backgroundColor: '#111318',
@@ -109,12 +249,32 @@ function createMainWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.setMenuBarVisibility(false);
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-    if (floatBarWindow && !floatBarWindow.isDestroyed()) {
-      floatBarWindow.close();
+  mainWindow.on('close', (e) => {
+    // 关闭时弹选择：最小化到托盘 or 退出
+    if (!app.isQuitting) {
+      e.preventDefault();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const { dialog } = require('electron');
+        const choice = dialog.showMessageBoxSync(mainWindow, {
+          type: 'question',
+          buttons: ['最小化到托盘', '退出程序'],
+          title: 'AutoDial',
+          message: '关闭窗口时',
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true
+        });
+        if (choice === 0) {
+          mainWindow.hide();
+          console.log('[托盘] 主窗口已最小化到托盘');
+        } else {
+          app.isQuitting = true;
+          if (floatBarWindow && !floatBarWindow.isDestroyed()) floatBarWindow.close();
+          mainWindow.close();
+          app.quit();
+        }
+      }
     }
-    app.quit();
   });
 
   // 补发历史日志 + 主动推送 info
@@ -127,9 +287,9 @@ function createMainWindow() {
         pin: PIN_CODE,
         port: PORT
       });
-      // 如果手机已连接，补发状态
+      // 如果手机已连接，补发状态（含真实 IP）
       if (phoneSocket && phoneSocket.readyState === WebSocket.OPEN) {
-        mainWindow.webContents.send('status-update', { connected: true, phoneIP: null });
+        mainWindow.webContents.send('status-update', { connected: true, phoneIP: phoneIP });
       }
     } catch (e) {}
   });
@@ -139,11 +299,19 @@ function createFloatBarWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
 
+  // 悬浮条初始位置：紧贴主界面右边，垂直与主界面状态栏的悬浮条开关平齐
+  const mainW = 420, mainH = 780;
+  const barW = 340, barH = 48;
+  const mainX = Math.round((screenW - mainW) / 2);
+  const mainY = Math.round((screenH - mainH) / 2);
+  const initialX = mainX + mainW + 8; // 主界面右边，间距 8px
+  const initialY = mainY + 36 + 8; // 标题栏(36px) + 间距 8px，与状态栏开关行平齐
+
   floatBarWindow = new BrowserWindow({
-    width: 340,
-    height: 48,
-    x: screenW - 360,
-    y: screenH - 80,
+    width: barW,
+    height: barH,
+    x: initialX,
+    y: initialY,
     frame: false,
     transparent: true,
     resizable: false,
@@ -184,77 +352,20 @@ ipcMain.handle('get-info', async () => {
   };
 });
 
-// 读取系统剪贴板
+// 读取系统剪贴板（使用 clipboardy ESM 动态导入，不启动子进程）
 ipcMain.handle('read-clipboard', async () => {
   try {
-    let text = '';
-    if (process.platform === 'win32') {
-      text = execSync('powershell -command "Get-Clipboard"', { timeout: 1000, encoding: 'utf8' }).trim();
-    } else if (process.platform === 'darwin') {
-      text = execSync('pbpaste', { timeout: 1000, encoding: 'utf8' }).trim();
-    } else {
-      text = execSync('xclip -selection clipboard -o 2>/dev/null || xdotool type --clearmodifiers --file -', { timeout: 1000, encoding: 'utf8' }).trim();
-    }
-    return { text };
+    const lib = await getClipboardy();
+    const text = (await lib.default.read()).trim();
+    return { text: text || '' };
   } catch (e) {
     return { text: '' };
   }
 });
 
-// OCR 截屏扫描
-ipcMain.handle('scan-screen', async (event, x, y, w, h) => {
-  const psScript = `
-[Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType = WindowsRuntime] | Out-Null
-[Windows.Media.Ocr.OcrEngine, Windows.Media.Ocr, ContentType = WindowsRuntime] | Out-Null
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-[Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime] | Out-Null
-
-Add-Type -AssemblyName System.Windows.Forms
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen
-$bmp = New-Object System.Drawing.Bitmap($w, $h)
-$gfx = [System.Drawing.Graphics]::FromImage($bmp)
-$gfx.CopyFromScreen($x, $y, 0, 0, (New-Object System.Drawing.Size($w, $h)))
-
-$tmpPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'autodial_ocr.bmp')
-$bmp.Save($tmpPath, [System.Drawing.Imaging.ImageFormat]::Bmp)
-$gfx.Dispose()
-$bmp.Dispose()
-
-$file = [Windows.Storage.StorageFile]::GetFileFromPathAsync($tmpPath).AsTask().GetAwaiter().GetResult()
-$stream = $file.OpenAsync([Windows.Storage.FileAccessMode]::Read).AsTask().GetAwaiter().GetResult()
-$decoder = [Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream).AsTask().GetAwaiter().GetResult()
-$softwareBitmap = $decoder.GetSoftwareBitmapAsync([Windows.Graphics.Imaging.BitmapPixelFormat]::Bgra8, [Windows.Graphics.Imaging.BitmapAlphaMode]::Premultiplied).AsTask().GetAwaiter().GetResult()
-$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new('zh-Hans-CN'))
-if ($null -eq $engine) { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }
-$result = $engine.RecognizeAsync($softwareBitmap).AsTask().GetAwaiter().GetResult()
-$text = $result.Text
-$stream.Dispose()
-Remove-Item $tmpPath -Force -ErrorAction SilentlyContinue
-Write-Output $text
-`;
-
-  try {
-    const ocrText = execSync(
-      'powershell -NoProfile -Command "' + psScript.replace(/"/g, '\\"').replace(/\n/g, ' ') + '"',
-      { timeout: 10000, encoding: 'utf8', maxBuffer: 1024 * 1024 }
-    ).trim();
-
-    const phoneMatch = ocrText.match(/1[3-9]\d{9}/g);
-    const phone = phoneMatch ? phoneMatch[0] : null;
-
-    // 找到手机号写入剪贴板
-    if (phone && process.platform === 'win32') {
-      try {
-        execSync('powershell -command "Set-Clipboard -Value \'' + phone + '\'"', { timeout: 1000 });
-      } catch (e) {}
-    }
-
-    console.log('[OCR] 识别结果: ' + (phone ? '发现号码 ' + phone : '未发现手机号'));
-    return { text: ocrText, phone };
-  } catch (e) {
-    console.error('[OCR] 识别失败:', e.message);
-    return { text: '', phone: null, error: e.message };
-  }
+// OCR 截屏扫描（已废弃，改为剪贴板检测，保留空 handler 防报错）
+ipcMain.handle('scan-screen', async () => {
+  return { text: '', phone: null, error: 'OCR 功能已改为剪贴板检测，请直接复制号码' };
 });
 
 // 拨号指令
@@ -296,11 +407,35 @@ ipcMain.on('set-topmost', (event, enable) => {
   console.log('[置顶] ' + (enable ? '已开启' : '已关闭'));
 });
 
+// 悬浮横条显示/隐藏
+ipcMain.on('toggle-floatbar', (event, show) => {
+  if (!floatBarWindow) return;
+  if (show) {
+    floatBarWindow.show();
+    console.log('[悬浮条] 已显示');
+  } else {
+    floatBarWindow.hide();
+    console.log('[悬浮条] 已隐藏');
+  }
+  // 通知主界面更新开关状态
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send('floatbar-visible-changed', show); } catch (e) {}
+  }
+});
+
+// 悬浮横条显示主窗口
+ipcMain.on('floatbar-show-main', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
 // 窗口控制（最小化/关闭）
 ipcMain.on('window-control', (event, action) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (action === 'minimize') mainWindow.minimize();
-  if (action === 'close') mainWindow.close();
+  if (action === 'close') mainWindow.close();  // 触发 close 事件，弹出选择框
 });
 
 // 悬浮横条位置反馈
@@ -321,6 +456,30 @@ ipcMain.on('floatbar-get-position', (event) => {
     const bounds = floatBarWindow.getBounds();
     try { event.sender.send('floatbar-position-reply', { x: bounds.x, y: bounds.y }); } catch (e) {}
   }
+});
+
+// 悬浮横条缩放（拖拽控制 - 右下角手柄）
+ipcMain.on('floatbar-resize', (event, delta) => {
+  if (!floatBarWindow || floatBarWindow.isDestroyed()) return;
+  const oldScale = floatBarScale;
+  floatBarScale = Math.round((floatBarScale + delta * 0.1) * 10) / 10;
+  floatBarScale = Math.max(FLOATBAR_MIN_SCALE, Math.min(FLOATBAR_MAX_SCALE, floatBarScale));
+  if (floatBarScale === oldScale) return;
+
+  const baseW = 340, baseH = 48;
+  const newW = Math.round(baseW * floatBarScale);
+  const newH = Math.round(baseH * floatBarScale);
+  // 以左上角为锚点，窗口大小跟随缩放
+  floatBarWindow.setSize(newW, newH);
+  // 推送缩放值给渲染进程，用 CSS transform 缩放内容
+  try {
+    floatBarWindow.webContents.send('floatbar-scale-changed', floatBarScale);
+  } catch (e) {}
+});
+
+// 获取当前缩放值
+ipcMain.handle('floatbar-get-scale', () => {
+  return floatBarScale;
 });
 
 function _sendError(event, message) {
@@ -366,6 +525,7 @@ wss.on('connection', (ws, req) => {
         }
         phoneSocket = ws;
         ws.isPhone = true;
+        phoneIP = clientIP;
         ws.send(JSON.stringify({ type: 'auth_ok', message: '配对成功！' }));
         _notifyUIStatus(true, clientIP);
         console.log('[配对] 手机连接成功: ' + clientIP);
@@ -397,6 +557,7 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     if (ws.isPhone) {
       phoneSocket = null;
+      phoneIP = null;
       _notifyUIStatus(false, null);
       console.log('[断开] 手机断开连接: ' + clientIP);
     }
@@ -501,12 +662,15 @@ app.whenReady().then(() => {
     console.log('========================================');
 
     startBroadcast();
+    createTray();
     createMainWindow();
     createFloatBarWindow();
   });
 });
 
 app.on('window-all-closed', () => {
+  // 有托盘时，关闭所有窗口不退出
+  if (tray) return;
   app.quit();
 });
 

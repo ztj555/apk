@@ -127,11 +127,11 @@
   .topmost-switch input { display: none; }
   .topmost-switch .sw-track {
     width: 28px; height: 14px;
-    background: var(--bg3);
+    background: var(--bg);
     border-radius: 7px;
     position: relative;
     transition: background 0.2s;
-    border: 1px solid var(--bg3);
+    border: 1px solid var(--text2);
   }
   .topmost-switch .sw-track::after {
     content: '';
@@ -355,6 +355,11 @@
       <span class="sw-track"></span>
       <span class="sw-label">置顶</span>
     </label>
+    <label class="topmost-switch" title="悬浮横条">
+      <input type="checkbox" id="floatbarToggle" checked>
+      <span class="sw-track"></span>
+      <span class="sw-label">悬浮条</span>
+    </label>
   </div>
 
   <div class="banner" id="banner">&#x2705; 手机已连接，可以拨号</div>
@@ -425,6 +430,11 @@ document.getElementById('topmostToggle').addEventListener('change', function() {
   window.api.send('set-topmost', this.checked);
 });
 
+// ==================== 悬浮横条开关 ====================
+document.getElementById('floatbarToggle').addEventListener('change', function() {
+  window.api.send('toggle-floatbar', this.checked);
+});
+
 // ==================== 拨号盘事件 ====================
 document.querySelectorAll('.dial-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -470,6 +480,9 @@ async function init() {
   window.api.on('info-push', (data) => {
     document.getElementById('localIP').textContent = data.ip || '--';
     document.getElementById('pinCode').textContent = data.pin || '----';
+  });
+  window.api.on('floatbar-visible-changed', (visible) => {
+    document.getElementById('floatbarToggle').checked = visible;
   });
   window.api.on('dial-result', (data) => {
     addLog(data.status === 'ok' ? 'success' : 'error', data.number + ' ' + (data.status === 'ok' ? '&#x2713;' : '&#x2717;'));

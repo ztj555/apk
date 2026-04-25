@@ -1,4 +1,10 @@
+const https = require('https');
+// 强制跳过 SSL 证书验证（公司网络/代理环境）
+https.globalAgent.options.rejectUnauthorized = false;
+
 const { packager } = require('@electron/packager');
+
+const ELECTRON_CACHE = 'C:\\Users\\EDY\\AppData\\Local\\electron\\Cache';
 
 async function build() {
   console.log('[Build] 开始打包 AutoDial PC...');
@@ -12,7 +18,15 @@ async function build() {
       overwrite: true,
       asar: true,
       electronVersion: '28.3.3',
-      electronZipDir: process.env.ELECTRON_CACHE || undefined,
+      download: {
+        cacheRoot: ELECTRON_CACHE,
+        // 跳过 SHASUMS 校验，直接用本地缓存
+        verifyChecksum: false,
+        // 使用淘宝镜像
+        mirrorOptions: {
+          mirror: 'https://npmmirror.com/mirrors/electron/'
+        }
+      },
       ignore: [
         /^\/dist/,
         /^\/dist-packager/,
