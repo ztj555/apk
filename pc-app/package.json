@@ -5,19 +5,23 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build-win": "electron-builder --win --x64 --dir",
+    "build-win": "electron-builder --win --x64",
     "dist": "electron-builder --win --x64"
   },
   "build": {
     "appId": "com.autodial.pc",
     "productName": "AutoDial",
+    "asar": true,
     "win": {
-      "target": "nsis",
-      "icon": "icon.ico"
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
     },
-    "nsis": {
-      "oneClick": true,
-      "allowToChangeInstallationDirectory": false
+    "portable": {
+      "artifactName": "AutoDial-PC.exe"
     },
     "files": [
       "main.js",
@@ -25,7 +29,9 @@
       "renderer/**/*",
       "node_modules/**/*"
     ],
-    "extraResources": []
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    }
   },
   "dependencies": {
     "ws": "^8.17.0"
