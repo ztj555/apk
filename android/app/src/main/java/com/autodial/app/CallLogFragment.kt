@@ -89,15 +89,27 @@ class CallLogFragment : Fragment() {
     private lateinit var countText: TextView
     private lateinit var permissionHint: View
 
-    // 轮询机制：每5秒检查是否有新的通话记录
+    // 主刷新机制：监听通话结束广播，延迟1秒刷新
+    private val callEndedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            // 通话结束后系统需要一点时间写入通话记录，延迟1秒再刷新
+            refreshHandler.removeCallbacks(refreshRunnable)
+            refreshHandler.postDelayed(refreshRunnable, 1000)
+        }
+    }
+
+    // 兜底轮询：30秒检查一次，防止遗漏（如App刚打开错过了广播）
     private var lastKnownDate: Long = 0L
     private val pollHandler = Handler(Looper.getMainLooper())
     private val pollRunnable = object : Runnable {
         override fun run() {
             checkAndRefresh()
-            pollHandler.postDelayed(this, 5000)
+            pollHandler.postDelayed(this, 30000)
         }
     }
+
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private val refreshRunnable = Runnable { loadCallLog() }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_call_log, container, false)
@@ -112,11 +124,19 @@ class CallLogFragment : Fragment() {
 
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
+        // 注册通话结束广播
+        try {
+            ContextCompat.registerReceiver(requireActivity(), callEndedReceiver,
+                IntentFilter("com.autodial.CALL_ENDED"),
+                ContextCompat.RECEIVER_EXPORTED
+            )
+        } catch (_: Exception) {}
+
         // 首次加载
         loadCallLog()
 
-        // 启动轮询
-        pollHandler.postDelayed(pollRunnable, 5000)
+        // 启动兜底轮询（30秒）
+        pollHandler.postDelayed(pollRunnable, 30000)
     }
 
     override fun onResume() {
@@ -126,7 +146,9 @@ class CallLogFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        refreshHandler.removeCallbacks(refreshRunnable)
         pollHandler.removeCallbacks(pollRunnable)
+        try { requireActivity().unregisterReceiver(callEndedReceiver) } catch (_: Exception) {}
     }
 
     fun refreshIfNeeded() {
@@ -136,8 +158,7 @@ class CallLogFragment : Fragment() {
     }
 
     /**
-     * 只查最新一条记录的日期，和 lastKnownDate 比较
-     * 如果不同说明有新通话记录，触发完整刷新
+     * 兜底轮询：只查最新一条记录的日期，和 lastKnownDate 比较
      */
     private fun checkAndRefresh() {
         if (!isAdded) return

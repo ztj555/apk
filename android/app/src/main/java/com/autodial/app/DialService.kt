@@ -15,6 +15,8 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.telecom.TelecomManager
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import okhttp3.*
@@ -29,6 +31,7 @@ class DialService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val ACTION_CONNECTION = "com.autodial.CONNECTION_CHANGE"
         private const val ACTION_NEW_DIAL = "com.autodial.NEW_DIAL"
+        private const val ACTION_CALL_ENDED = "com.autodial.CALL_ENDED"
 
         var isRunning = false
             private set
@@ -59,6 +62,7 @@ class DialService : Service() {
     private var manualConnecting = false
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var callLogDb: CallLogDb
+    private var phoneStateListener: PhoneStateListener? = null
 
     // ==================== 生命周期 ====================
 
@@ -76,6 +80,9 @@ class DialService : Service() {
                 setReferenceCounted(false)
                 acquire(12 * 60 * 60 * 1000L) // 12小时后自动释放
             }
+
+            // 监听通话状态，通话结束时通知UI刷新通话记录
+            registerCallStateListener()
 
             val prefs = getSharedPreferences("autodial", MODE_PRIVATE)
             lastIp = prefs.getString("ip", "") ?: ""
@@ -128,7 +135,17 @@ class DialService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        try { disconnect(); handler.removeCallbacksAndMessages(null); isRunning = false; isConnected = false; wakeLock?.release(); wakeLock = null } catch (_: Exception) {}
+        try {
+            // 注销通话状态监听
+            phoneStateListener?.let {
+                try {
+                    val tm = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+                    tm.listen(it, PhoneStateListener.LISTEN_NONE)
+                } catch (_: Exception) {}
+            }
+            disconnect(); handler.removeCallbacksAndMessages(null)
+            isRunning = false; isConnected = false; wakeLock?.release(); wakeLock = null
+        } catch (_: Exception) {}
     }
 
     // ==================== WebSocket 连接 ====================
@@ -278,6 +295,49 @@ class DialService : Service() {
         webSocket = null; isConnected = false
         _sendResult = null
         updateNotification("AutoDial 运行中")
+    }
+
+    // ==================== 通话状态监听 ====================
+
+    /**
+     * 监听系统通话状态。当通话从非空闲变为空闲(IDLE)时，说明通话结束了。
+     * 此时发广播通知 CallLogFragment 和 StatsFragment 延迟1秒刷新。
+     * PhoneStateListener 是被动回调，不轮询，CPU 开销几乎为零。
+     */
+    private fun registerCallStateListener() {
+        try {
+            val tm = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            phoneStateListener = object : PhoneStateListener() {
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                    when (state) {
+                        TelephonyManager.CALL_STATE_IDLE -> {
+                            // 通话结束，广播通知刷新
+                            Log.d(TAG, "通话结束，通知刷新通话记录")
+                            notifyCallEnded()
+                        }
+                        TelephonyManager.CALL_STATE_OFFHOOK -> {
+                            Log.d(TAG, "通话中")
+                        }
+                        TelephonyManager.CALL_STATE_RINGING -> {
+                            Log.d(TAG, "来电响铃")
+                        }
+                    }
+                }
+            }
+            tm.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
+            Log.d(TAG, "已注册通话状态监听")
+        } catch (e: Exception) {
+            Log.e(TAG, "注册通话状态监听失败: ${e.message}")
+        }
+    }
+
+    private fun notifyCallEnded() {
+        try {
+            val intent = Intent(ACTION_CALL_ENDED).apply {
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
+        } catch (_: Exception) {}
     }
 
     // ==================== 通知 UI ====================

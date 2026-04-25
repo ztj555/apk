@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -32,6 +34,17 @@ class StatsFragment : Fragment() {
         }
     }
 
+    // 通话结束时延迟1秒刷新统计
+    private val callEndedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            refreshHandler.removeCallbacks(refreshRunnable)
+            refreshHandler.postDelayed(refreshRunnable, 1000)
+        }
+    }
+
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private val refreshRunnable = Runnable { refreshIfNeeded() }
+
     private val dayOfWeekFormat = SimpleDateFormat("E", Locale.getDefault())
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -54,6 +67,14 @@ class StatsFragment : Fragment() {
             )
         } catch (_: Exception) {}
 
+        // 注册通话结束广播
+        try {
+            ContextCompat.registerReceiver(requireActivity(), callEndedReceiver,
+                IntentFilter("com.autodial.CALL_ENDED"),
+                ContextCompat.RECEIVER_EXPORTED
+            )
+        } catch (_: Exception) {}
+
         refreshIfNeeded()
     }
 
@@ -64,7 +85,9 @@ class StatsFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        refreshHandler.removeCallbacks(refreshRunnable)
         try { requireActivity().unregisterReceiver(newDialReceiver) } catch (_: Exception) {}
+        try { requireActivity().unregisterReceiver(callEndedReceiver) } catch (_: Exception) {}
     }
 
     fun refreshIfNeeded() {
