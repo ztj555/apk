@@ -153,6 +153,8 @@ class CallLogFragment : Fragment() {
 
         try {
             // 查询系统通话记录，按时间倒序，最多100条
+            // 用 @Suppress 避免编译器匹配到 API 33+ 的 Bundle 重载
+            @Suppress("DEPRECATION")
             val cursor: Cursor? = requireActivity().contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
                 arrayOf(
@@ -163,8 +165,7 @@ class CallLogFragment : Fragment() {
                     CallLog.Calls.PHONE_ACCOUNT_ID
                 ),
                 null, null,
-                "${CallLog.Calls.DATE} DESC",
-                "100"
+                "${CallLog.Calls.DATE} DESC"
             )
 
             cursor?.use {
@@ -187,7 +188,7 @@ class CallLogFragment : Fragment() {
                     } else null
                 } catch (e: Exception) { null }
 
-                while (it.moveToNext()) {
+                while (it.moveToNext() && records.size < 100) {
                     val number = it.getString(numberIdx) ?: continue
                     val time = it.getLong(dateIdx)
                     val duration = it.getLong(durationIdx)
