@@ -89,16 +89,15 @@ class CallLogFragment : Fragment() {
     private lateinit var countText: TextView
     private lateinit var permissionHint: View
 
-    private val newDialReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            // 拨号后系统通话记录有写入延迟，延迟3秒再刷新
-            refreshHandler.removeCallbacks(refreshRunnable)
-            refreshHandler.postDelayed(refreshRunnable, 3000)
+    // 轮询机制：每5秒检查是否有新的通话记录
+    private var lastKnownDate: Long = 0L
+    private val pollHandler = Handler(Looper.getMainLooper())
+    private val pollRunnable = object : Runnable {
+        override fun run() {
+            checkAndRefresh()
+            pollHandler.postDelayed(this, 5000)
         }
     }
-
-    private val refreshHandler = Handler(Looper.getMainLooper())
-    private val refreshRunnable = Runnable { loadCallLog() }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_call_log, container, false)
@@ -113,15 +112,11 @@ class CallLogFragment : Fragment() {
 
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
-        // 注册新拨号广播
-        try {
-            ContextCompat.registerReceiver(requireActivity(), newDialReceiver,
-                IntentFilter("com.autodial.NEW_DIAL"),
-                ContextCompat.RECEIVER_EXPORTED
-            )
-        } catch (_: Exception) {}
-
+        // 首次加载
         loadCallLog()
+
+        // 启动轮询
+        pollHandler.postDelayed(pollRunnable, 5000)
     }
 
     override fun onResume() {
@@ -131,14 +126,42 @@ class CallLogFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        refreshHandler.removeCallbacks(refreshRunnable)
-        try { requireActivity().unregisterReceiver(newDialReceiver) } catch (_: Exception) {}
+        pollHandler.removeCallbacks(pollRunnable)
     }
 
     fun refreshIfNeeded() {
         if (isAdded && !isDetached) {
             loadCallLog()
         }
+    }
+
+    /**
+     * 只查最新一条记录的日期，和 lastKnownDate 比较
+     * 如果不同说明有新通话记录，触发完整刷新
+     */
+    private fun checkAndRefresh() {
+        if (!isAdded) return
+
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_CALL_LOG)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+
+        try {
+            @Suppress("DEPRECATION")
+            val cursor: Cursor? = requireActivity().contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                arrayOf(CallLog.Calls.DATE),
+                null, null,
+                "${CallLog.Calls.DATE} DESC"
+            )
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val latestDate = it.getLong(it.getColumnIndex(CallLog.Calls.DATE))
+                    if (latestDate != lastKnownDate) {
+                        loadCallLog()
+                    }
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     private fun loadCallLog() {
@@ -159,8 +182,6 @@ class CallLogFragment : Fragment() {
         val records = mutableListOf<PhoneCallRecord>()
 
         try {
-            // 查询系统通话记录，按时间倒序，最多100条
-            // 用 @Suppress 避免编译器匹配到 API 33+ 的 Bundle 重载
             @Suppress("DEPRECATION")
             val cursor: Cursor? = requireActivity().contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
@@ -182,13 +203,11 @@ class CallLogFragment : Fragment() {
                 val typeIdx = it.getColumnIndex(CallLog.Calls.TYPE)
                 val simIdx = it.getColumnIndex(CallLog.Calls.PHONE_ACCOUNT_ID)
 
-                // 先收集 subId，再映射到 simSlot
                 val subscriptionManager = try {
                     requireActivity().getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE)
                             as? android.telephony.SubscriptionManager
                 } catch (e: Exception) { null }
 
-                // 获取所有活跃的 SIM 卡信息
                 val simInfoList = try {
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP_MR1) {
                         subscriptionManager?.activeSubscriptionInfoList
@@ -202,8 +221,7 @@ class CallLogFragment : Fragment() {
                     val type = it.getInt(typeIdx)
                     val subId = it.getString(simIdx)
 
-                    // 映射 subId 到 simSlot
-                    var simSlot = 0  // 默认卡1
+                    var simSlot = 0
                     if (subId != null && simInfoList != null) {
                         for (info in simInfoList) {
                             if (info.subscriptionId.toString() == subId) {
@@ -218,6 +236,11 @@ class CallLogFragment : Fragment() {
             }
         } catch (e: Exception) {
             Toast.makeText(requireContext(), "读取通话记录失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+
+        // 记录最新一条的日期用于轮询比对
+        if (records.isNotEmpty()) {
+            lastKnownDate = records[0].time
         }
 
         countText.text = "${records.size} 条记录"

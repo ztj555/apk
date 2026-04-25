@@ -1,5 +1,6 @@
 package com.autodial.app
 
+import android.Manifest
 import android.app.*
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -360,10 +361,25 @@ class DialService : Service() {
     private fun endCall() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                // 先检查是否有 ANSWER_PHONE_CALLS 权限
+                if (androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.ANSWER_PHONE_CALLS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                    Log.e(TAG, "缺少 ANSWER_PHONE_CALLS 权限，无法挂断电话")
+                    return
+                }
                 val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                try { tm.endCall(); return } catch (_: Exception) {}
+                try {
+                    tm.endCall()
+                    Log.d(TAG, "挂断电话成功")
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "endCall 权限不足: ${e.message}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "endCall 失败: ${e.message}")
+                }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.e(TAG, "endCall 异常: ${e.message}")
+        }
     }
 
     // ==================== 通知栏 ====================
