@@ -3,3 +3,8 @@ dist/
 dist-packager/
 build-output.log
 pack-output.log
+debug*.js
+debug*.log
+run-debug*.bat
+build-local.bat
+_asar_tmp/
