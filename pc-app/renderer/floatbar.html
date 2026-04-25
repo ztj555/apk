@@ -114,7 +114,7 @@
 </head>
 <body>
 <div class="float-bar" id="floatBar">
-  <div class="fb-dot" id="fbDot"></div>
+  <div class="fb-dot off" id="fbDot"></div>
   <button class="fb-scan-btn" id="fbScanBtn">读取</button>
   <input type="text" class="fb-input" id="fbInput" placeholder="扫描结果..." readonly>
   <button class="fb-dial-btn" id="fbDialBtn" disabled>&#x1F4DE; 拨打</button>
@@ -165,10 +165,10 @@ api.on('status-update', (data) => {
   const dot = document.getElementById('fbDot');
   const dialBtn = document.getElementById('fbDialBtn');
   if (data.connected) {
-    dot.className = 'fb-dot';
+    dot.className = 'fb-dot';       // 绿色
     dialBtn.disabled = !document.getElementById('fbInput').value;
   } else {
-    dot.className = 'fb-dot off';
+    dot.className = 'fb-dot off';   // 红色
     dialBtn.disabled = true;
   }
 });

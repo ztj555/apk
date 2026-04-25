@@ -117,9 +117,21 @@ function createMainWindow() {
     app.quit();
   });
 
-  // 补发历史日志
+  // 补发历史日志 + 主动推送 info
   mainWindow.webContents.on('did-finish-load', () => {
     _flushLogBuffer(mainWindow);
+    // 主动推送 IP 和配对码（避免 invoke 时序问题）
+    try {
+      mainWindow.webContents.send('info-push', {
+        ip: LOCAL_IP,
+        pin: PIN_CODE,
+        port: PORT
+      });
+      // 如果手机已连接，补发状态
+      if (phoneSocket && phoneSocket.readyState === WebSocket.OPEN) {
+        mainWindow.webContents.send('status-update', { connected: true, phoneIP: null });
+      }
+    } catch (e) {}
   });
 }
 
@@ -137,7 +149,7 @@ function createFloatBarWindow() {
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    focusable: false,
+    focusable: true,   // 必须为 true，否则鼠标事件无法触发（拖拽失效）
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

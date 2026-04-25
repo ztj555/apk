@@ -36,7 +36,7 @@
   .titlebar {
     background: var(--bg2);
     border-bottom: 1px solid var(--gold-dark);
-    padding: 6px 14px;
+    padding: 0 0 0 14px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -46,21 +46,23 @@
   }
   .titlebar-btns {
     display: flex;
-    gap: 2px;
+    gap: 0;
+    margin-left: auto;
     -webkit-app-region: no-drag;
+    height: 100%;
   }
   .titlebar-btn {
-    width: 26px; height: 26px;
+    width: 46px; height: 38px;
     background: none; border: none;
     color: var(--text2);
-    font-size: 13px;
+    font-size: 12px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 0;
     display: flex; align-items: center; justify-content: center;
     transition: all 0.15s;
   }
   .titlebar-btn:hover { background: var(--bg3); color: var(--text); }
-  .titlebar-btn.close:hover { background: var(--red); color: white; }
+  .titlebar-btn.close:hover { background: #C42B1C; color: white; }
   .logo {
     font-size: 14px;
     font-weight: 700;
@@ -333,11 +335,11 @@
 <div class="wrap">
   <!-- 自定义标题栏 -->
   <div class="titlebar">
-    <div class="titlebar-btns">
-      <button class="titlebar-btn" id="btnMinimize">&#x2500;</button>
-      <button class="titlebar-btn close" id="btnClose">&#x2715;</button>
-    </div>
     <div class="logo"><div class="logo-icon">&#x1F4DE;</div>AutoDial</div>
+    <div class="titlebar-btns">
+      <button class="titlebar-btn" id="btnMinimize" title="最小化">&#xE921;</button>
+      <button class="titlebar-btn close" id="btnClose" title="关闭">&#xE8BB;</button>
+    </div>
   </div>
 
   <!-- 状态栏 -->
@@ -442,41 +444,50 @@ document.getElementById('logToggle').addEventListener('click', toggleLog);
 
 // ==================== 初始化 ====================
 async function init() {
-  try {
-    const info = await api.invoke('get-info');
-    document.getElementById('localIP').textContent = info.ip;
-    document.getElementById('pinCode').textContent = info.pin;
+  // 重试拿初始信息，最多5次
+  let info = null;
+  for (let i = 0; i < 5; i++) {
+    try {
+      info = await api.invoke('get-info');
+      break;
+    } catch (e) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  if (info) {
+    document.getElementById('localIP').textContent = info.ip || '--';
+    document.getElementById('pinCode').textContent = info.pin || '----';
     if (info.connected) setPhoneConnected(true, null);
     if (info.firewall === 'warning') addLog('error', '防火墙可能拦截连接，请以管理员运行');
-  } catch (e) {
-    setTimeout(init, 1000);
+  } else {
+    document.getElementById('localIP').textContent = '获取失败';
   }
 
   pollClipboard();
 
   // IPC 事件监听
-  ipcMainOn('status-update', (data) => setPhoneConnected(data.connected, data.phoneIP));
-  ipcMainOn('dial-result', (data) => {
+  api.on('status-update', (data) => setPhoneConnected(data.connected, data.phoneIP));
+  api.on('info-push', (data) => {
+    document.getElementById('localIP').textContent = data.ip || '--';
+    document.getElementById('pinCode').textContent = data.pin || '----';
+  });
+  api.on('dial-result', (data) => {
     addLog(data.status === 'ok' ? 'success' : 'error', data.number + ' ' + (data.status === 'ok' ? '&#x2713;' : '&#x2717;'));
   });
-  ipcMainOn('dial-sent', (data) => {
+  api.on('dial-sent', (data) => {
     addLog('success', '&#x1F4DE; 已发送: ' + data.number);
   });
-  ipcMainOn('hangup-sent', () => {
+  api.on('hangup-sent', () => {
     addLog('info', '已发送挂断');
   });
-  ipcMainOn('server-log', (data) => {
+  api.on('server-log', (data) => {
     const lvl = data.level === 'error' ? 'error' : data.level === 'warn' ? 'error' : 'info';
     addLog(lvl, '&#x1F5A5; ' + data.text);
   });
-  ipcMainOn('error', (data) => {
+  api.on('error', (data) => {
     showToast(data.message, 'error');
     addLog('error', data.message);
   });
-}
-
-function ipcMainOn(channel, callback) {
-  api.on(channel, (data) => callback(data));
 }
 
 function setPhoneConnected(connected, phoneIP) {
