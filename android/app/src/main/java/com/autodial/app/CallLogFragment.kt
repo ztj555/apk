@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.database.Cursor
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.CallLog
 import android.view.LayoutInflater
 import android.view.View
@@ -89,10 +91,14 @@ class CallLogFragment : Fragment() {
 
     private val newDialReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // 有新拨号时刷新列表
-            refreshIfNeeded()
+            // 拨号后系统通话记录有写入延迟，延迟3秒再刷新
+            refreshHandler.removeCallbacks(refreshRunnable)
+            refreshHandler.postDelayed(refreshRunnable, 3000)
         }
     }
+
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private val refreshRunnable = Runnable { loadCallLog() }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_call_log, container, false)
@@ -125,6 +131,7 @@ class CallLogFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        refreshHandler.removeCallbacks(refreshRunnable)
         try { requireActivity().unregisterReceiver(newDialReceiver) } catch (_: Exception) {}
     }
 

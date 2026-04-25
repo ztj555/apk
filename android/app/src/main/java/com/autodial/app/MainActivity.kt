@@ -68,7 +68,13 @@ class MainActivity : AppCompatActivity() {
         // 高亮当前标签
         when (index) {
             0 -> tabConnectLabel.setTextColor(getColor(R.color.gold_light))
-            1 -> tabCallLogLabel.setTextColor(getColor(R.color.gold_light))
+            1 -> {
+                tabCallLogLabel.setTextColor(getColor(R.color.gold_light))
+                // 切换到记录页时刷新通话记录
+                supportFragmentManager.fragments.forEach { frag ->
+                    if (frag is CallLogFragment) frag.refreshIfNeeded()
+                }
+            }
             2 -> tabStatsLabel.setTextColor(getColor(R.color.gold_light))
         }
     }

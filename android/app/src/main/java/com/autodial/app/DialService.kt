@@ -205,15 +205,24 @@ class DialService : Service() {
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                     Log.d(TAG, "关闭 code=$code reason=$reason")
                     onDisconnected()
-                    // WiFi切换等原因导致的断开会走onClosed，也需要重连
-                    handler.post { notifyConnectionChange(false, "disconnected") }
+                    // 自动重连的断开只更新通知栏，不弹Toast
+                    if (isAutoReconnect) {
+                        handler.post { updateNotification("连接已断开，正在重连...") }
+                    } else {
+                        handler.post { notifyConnectionChange(false, "disconnected") }
+                    }
                     scheduleReconnect()
                 }
 
                 override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                     Log.e(TAG, "连接失败: ${t.message}")
                     onDisconnected()
-                    handler.post { notifyConnectionChange(false, "connection_failed") }
+                    // 自动重连的失败只更新通知栏，不弹Toast
+                    if (isAutoReconnect) {
+                        handler.post { updateNotification("连接失败，正在重连...") }
+                    } else {
+                        handler.post { notifyConnectionChange(false, "connection_failed") }
+                    }
                     scheduleReconnect()
                 }
             })
@@ -244,6 +253,11 @@ class DialService : Service() {
 
     private fun scheduleReconnect() {
         cancelReconnect()
+        // 检查用户是否开启了自动连接
+        val autoReconnect = getSharedPreferences("autodial", MODE_PRIVATE)
+            .getBoolean("auto_reconnect", true)
+        if (!autoReconnect) return
+
         reconnectRunnable = Runnable {
             if (lastIp.isNotEmpty() && lastPin.isNotEmpty() && !isConnected) {
                 Log.d(TAG, "自动重连到 $lastIp")

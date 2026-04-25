@@ -34,6 +34,7 @@ class ConnectFragment : Fragment() {
     private lateinit var discoveryHint: TextView
     private lateinit var foundPCInfo: LinearLayout
     private lateinit var foundPCText: TextView
+    private lateinit var autoConnectSwitch: TextView
 
     private var discoveredIP = ""
     private var discoveryJob: Job? = null
@@ -64,12 +65,25 @@ class ConnectFragment : Fragment() {
             discoveryHint = view.findViewById(R.id.discoveryHint)
             foundPCInfo = view.findViewById(R.id.foundPCInfo)
             foundPCText = view.findViewById(R.id.foundPCText)
+            autoConnectSwitch = view.findViewById(R.id.autoConnectSwitch)
 
             connectBtn.setOnClickListener { toggleConnection() }
 
             // 读取保存的配对码
             val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
             pinInput.setText(prefs.getString("pin", ""))
+
+            // 初始化自动连接开关状态
+            val autoConnect = prefs.getBoolean("auto_reconnect", true)
+            updateAutoConnectUI(autoConnect)
+
+            // 自动连接开关点击
+            view.findViewById<View>(R.id.autoConnectRow).setOnClickListener {
+                val current = prefs.getBoolean("auto_reconnect", true)
+                val newValue = !current
+                prefs.edit().putBoolean("auto_reconnect", newValue).apply()
+                updateAutoConnectUI(newValue)
+            }
 
             // 注册广播
             try {
@@ -328,6 +342,17 @@ class ConnectFragment : Fragment() {
             requireActivity().startService(intent)
             updateConnectionUI(false, null)
         } catch (_: Exception) {}
+    }
+
+    private fun updateAutoConnectUI(enabled: Boolean) {
+        if (!isAdded) return
+        if (enabled) {
+            autoConnectSwitch.text = "开"
+            autoConnectSwitch.setBackgroundColor(Color.parseColor("#C9A84C"))
+        } else {
+            autoConnectSwitch.text = "关"
+            autoConnectSwitch.setBackgroundColor(Color.parseColor("#3A3D44"))
+        }
     }
 
     private fun updateConnectionUI(connected: Boolean, reason: String?) {
