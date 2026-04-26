@@ -43,12 +43,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 监听 DialService 的选卡广播，弹出自定义 BottomSheet
+    // 监听 DialService 的选卡广播，弹出透明选卡 Activity
     private val simSelectReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val number = intent?.getStringExtra("number") ?: return
-            val lastHint = intent.getStringExtra("last_hint") ?: ""
-            showSimSelectSheet(number, lastHint)
+            val lastSimSlot = intent.getIntExtra("last_sim_slot", -1)
+            val lastDialTime = intent.getLongExtra("last_dial_time", 0L)
+            showSimSelectSheet(number, lastSimSlot, lastDialTime)
         }
     }
 
@@ -99,23 +100,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 弹出自定义 SIM 选卡 BottomSheet
+     * 弹出透明 Activity 选卡（可在任何界面弹出，包括桌面）
      */
-    private fun showSimSelectSheet(number: String, lastHint: String) {
+    private fun showSimSelectSheet(number: String, lastSimSlot: Int, lastDialTime: Long) {
         try {
-            // 如果已经有弹窗在显示，不重复弹出
-            if (supportFragmentManager.findFragmentByTag(SimSelectBottomSheet.TAG) != null) return
-
-            val sheet = SimSelectBottomSheet.newInstance(number, lastHint) { num, simSlot ->
-                // 用户选好卡后，通知 DialService 拨号
-                val intent = Intent(this, DialService::class.java).apply {
-                    action = "DIAL_WITH_SIM"
-                    putExtra("number", num)
-                    putExtra("sim_slot", simSlot)
-                }
-                startService(intent)
-            }
-            sheet.show(supportFragmentManager, SimSelectBottomSheet.TAG)
+            startActivity(SimSelectActivity.newIntent(this, number, lastSimSlot, lastDialTime))
         } catch (e: Exception) {
             e.printStackTrace()
         }

@@ -73,8 +73,6 @@ class DialService : Service() {
 
     /** 当前正在等待用户选卡的号码 */
     private var pendingDialNumber: String? = null
-    /** 弹窗超时：如果用户10秒没选卡（如MainActivity不在前台），自动用卡1拨号 */
-    private var popupTimeoutRunnable: Runnable? = null
 
     // ==================== 生命周期 ====================
 
@@ -143,10 +141,15 @@ class DialService : Service() {
                     val number = intent.getStringExtra("number") ?: return START_STICKY
                     val simSlot = intent.getIntExtra("sim_slot", 0)
                     pendingDialNumber = null
-                    cancelPopupTimeout()
                     // 弹窗选卡后，也要通知UI本次使用的卡
                     broadcastDialSimInfo(number, simSlot)
                     performDial(number, simSlot)
+                }
+                /** SimSelectBottomSheet 用户取消 */
+                "DIAL_CANCELLED" -> {
+                    pendingDialNumber = null
+                    val number = intent.getStringExtra("number") ?: return START_STICKY
+                    _sendResult?.invoke(number, "cancelled")
                 }
             }
         } catch (e: Exception) { e.printStackTrace() }
@@ -168,7 +171,7 @@ class DialService : Service() {
             disconnect(); handler.removeCallbacksAndMessages(null)
             isRunning = false; isConnected = false
             wakeLock?.release(); wakeLock = null
-            pendingDialNumber = null; popupTimeoutRunnable = null
+            pendingDialNumber = null
         } catch (_: Exception) {}
     }
 
@@ -310,10 +313,6 @@ class DialService : Service() {
         try { reconnectRunnable?.let { handler.removeCallbacks(it) }; reconnectRunnable = null } catch (_: Exception) {}
     }
 
-    private fun cancelPopupTimeout() {
-        try { popupTimeoutRunnable?.let { handler.removeCallbacks(it) }; popupTimeoutRunnable = null } catch (_: Exception) {}
-    }
-
     private fun disconnect() {
         cancelReconnect(); manualConnecting = false
         try { webSocket?.cancel() } catch (_: Exception) {}
@@ -418,11 +417,9 @@ class DialService : Service() {
             DialMode.SIM2 -> 1
 
             DialMode.ALTERNATE -> {
-                // 查询系统通话记录，最近一次该号码用了哪张卡，就用另一张
-                // 如果没有记录，默认用卡1
-                val lastSlot = getLastSimSlotFromCallLog(number)
+                // 查询 APP 自身数据库，最近一次该号码用了哪张卡，就用另一张
+                val lastSlot = callLogDb.getLastSimSlot(number)
                 if (lastSlot >= 0) {
-                    // 用另一张卡
                     val next = 1 - lastSlot
                     Log.d(TAG, "轮流模式：上次卡${lastSlot + 1}，本次卡${next + 1}")
                     next
@@ -434,7 +431,7 @@ class DialService : Service() {
 
             DialMode.REMEMBER -> {
                 // 查询该号码上次用的卡，有就用同一张，没有则弹窗让用户选
-                val lastSlot = getLastSimSlotFromCallLog(number)
+                val lastSlot = callLogDb.getLastSimSlot(number)
                 if (lastSlot >= 0) {
                     Log.d(TAG, "记忆模式：上次卡${lastSlot + 1}，继续用卡${lastSlot + 1}")
                     lastSlot
@@ -452,99 +449,14 @@ class DialService : Service() {
     }
 
     /**
-     * 从系统通话记录中查询该号码最近一次使用的 SIM 卡槽
-     * @return 0=卡1, 1=卡2, -1=无记录
+     * 从 APP 自身数据库查询该号码最近一次拨号信息（供弹窗显示）
+     * @return Pair(simSlot, timeMs) 或 null
      */
-    private fun getLastSimSlotFromCallLog(number: String): Int {
+    private fun getLastDialHintForPopup(number: String): Pair<Int, Long>? {
         return try {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG)
-                != PackageManager.PERMISSION_GRANTED) return -1
-
-            @Suppress("DEPRECATION")
-            val cursor = contentResolver.query(
-                android.provider.CallLog.Calls.CONTENT_URI,
-                arrayOf(
-                    android.provider.CallLog.Calls.PHONE_ACCOUNT_ID
-                ),
-                "${android.provider.CallLog.Calls.NUMBER} = ?",
-                arrayOf(number),
-                "${android.provider.CallLog.Calls.DATE} DESC"
-            ) ?: return -1
-
-            cursor.use {
-                if (it.moveToFirst()) {
-                    val subId = it.getString(it.getColumnIndex(android.provider.CallLog.Calls.PHONE_ACCOUNT_ID))
-                    if (subId != null) {
-                        val simList = getSimInfoList()
-                        for (info in simList) {
-                            if (info.subscriptionId.toString() == subId) {
-                                return info.simSlotIndex
-                            }
-                        }
-                    }
-                }
-                -1
-            }
+            callLogDb.getLastDialInfo(number)
         } catch (e: Exception) {
-            Log.e(TAG, "查询上次SIM卡失败: ${e.message}")
-            -1
-        }
-    }
-
-    /**
-     * 查询该号码最近一次通话的提示信息（供选卡卡片显示）
-     * @return "卡1  昨天" 或 null
-     */
-    private fun getLastCallHintInfo(number: String): String? {
-        return try {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG)
-                != PackageManager.PERMISSION_GRANTED) return null
-
-            @Suppress("DEPRECATION")
-            val cursor = contentResolver.query(
-                android.provider.CallLog.Calls.CONTENT_URI,
-                arrayOf(
-                    android.provider.CallLog.Calls.DATE,
-                    android.provider.CallLog.Calls.PHONE_ACCOUNT_ID
-                ),
-                "${android.provider.CallLog.Calls.NUMBER} = ?",
-                arrayOf(number),
-                "${android.provider.CallLog.Calls.DATE} DESC"
-            ) ?: return null
-
-            cursor.use {
-                if (it.moveToFirst()) {
-                    val date = it.getLong(it.getColumnIndex(android.provider.CallLog.Calls.DATE))
-                    val subId = it.getString(it.getColumnIndex(android.provider.CallLog.Calls.PHONE_ACCOUNT_ID))
-
-                    var simSlot = 0
-                    if (subId != null) {
-                        val simList = getSimInfoList()
-                        for (info in simList) {
-                            if (info.subscriptionId.toString() == subId) {
-                                simSlot = info.simSlotIndex
-                                break
-                            }
-                        }
-                    }
-
-                    // 格式化日期
-                    val cal = java.util.Calendar.getInstance()
-                    val today = java.text.SimpleDateFormat("MM-dd", java.util.Locale.getDefault()).format(cal.time)
-                    cal.add(java.util.Calendar.DAY_OF_MONTH, -1)
-                    val yesterday = java.text.SimpleDateFormat("MM-dd", java.util.Locale.getDefault()).format(cal.time)
-                    val dateStr = java.text.SimpleDateFormat("MM-dd", java.util.Locale.getDefault()).format(java.util.Date(date))
-                    val displayDate = when (dateStr) {
-                        today -> "今天"
-                        yesterday -> "昨天"
-                        else -> dateStr
-                    }
-
-                    "卡${simSlot + 1}  $displayDate"
-                } else null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "查询上次通话提示失败: ${e.message}")
+            Log.e(TAG, "查询上次拨号信息失败: ${e.message}")
             null
         }
     }
@@ -576,25 +488,14 @@ class DialService : Service() {
             } else {
                 // 需要弹窗选择
                 pendingDialNumber = number
-                val lastHint = getLastCallHintInfo(number)
+                val lastHint = getLastDialHintForPopup(number)
                 val intent = Intent(ACTION_SHOW_SIM_SELECT).apply {
                     putExtra("number", number)
-                    putExtra("last_hint", lastHint ?: "")
+                    putExtra("last_sim_slot", lastHint?.first ?: -1)
+                    putExtra("last_dial_time", lastHint?.second ?: 0L)
                     setPackage(packageName)
                 }
                 sendBroadcast(intent)
-
-                // 兜底：10秒后如果用户没选（如Activity不在前台），自动用卡1拨号
-                cancelPopupTimeout()
-                popupTimeoutRunnable = Runnable {
-                    if (pendingDialNumber == number) {
-                        Log.w(TAG, "选卡弹窗超时10秒，自动用卡1拨号: $number")
-                        pendingDialNumber = null
-                        broadcastDialSimInfo(number, 0)
-                        performDial(number, 0)
-                    }
-                }
-                handler.postDelayed(popupTimeoutRunnable!!, 10000)
             }
         } catch (e: Exception) {
             Log.e(TAG, "拨号失败: ${e.message}")
@@ -621,7 +522,7 @@ class DialService : Service() {
                 telecomManager.placeCall(uri, extras)
                 Log.d(TAG, "已拨号(TelecomManager, 卡${simSlot + 1}): $number")
                 _sendResult?.invoke(number, "ok")
-                callLogDb.insertDial(number, "ok")
+                callLogDb.insertDial(number, "ok", simSlot)
                 notifyNewDial(number)
                 return
             } catch (e: SecurityException) {
@@ -639,12 +540,12 @@ class DialService : Service() {
                 startActivity(intent)
                 Log.d(TAG, "已拨号(ACTION_CALL fallback): $number")
                 _sendResult?.invoke(number, "ok")
-                callLogDb.insertDial(number, "ok")
+                callLogDb.insertDial(number, "ok", simSlot)
                 notifyNewDial(number)
             } catch (e: Exception) {
                 Log.e(TAG, "ACTION_CALL也失败: ${e.message}")
                 _sendResult?.invoke(number, "error")
-                callLogDb.insertDial(number, "error")
+                callLogDb.insertDial(number, "error", simSlot)
             }
         } catch (e: Exception) {
             Log.e(TAG, "拨号异常: ${e.message}")

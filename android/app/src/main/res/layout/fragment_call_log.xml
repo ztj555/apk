@@ -37,6 +37,80 @@
             android:textSize="12sp" />
     </LinearLayout>
 
+    <!-- 拨号卡选择栏 -->
+    <LinearLayout
+        android:id="@+id/dialModeBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#1A1D24"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="8dp">
+
+        <TextView
+            android:id="@+id/dialModeAlternate"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="#C9A84C"
+            android:gravity="center"
+            android:text="轮流"
+            android:textColor="#111318"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/dialModeRemember"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="#22252E"
+            android:gravity="center"
+            android:text="记忆"
+            android:textColor="#A09070"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/dialModeSim1"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="#22252E"
+            android:gravity="center"
+            android:text="卡1"
+            android:textColor="#A09070"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/dialModeSim2"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="#22252E"
+            android:gravity="center"
+            android:text="卡2"
+            android:textColor="#A09070"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/dialModePopup"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_weight="1"
+            android:background="#22252E"
+            android:gravity="center"
+            android:text="弹窗"
+            android:textColor="#A09070"
+            android:textSize="13sp" />
+    </LinearLayout>
+
     <!-- 提示文字 -->
     <TextView
         android:id="@+id/callLogPermissionHint"

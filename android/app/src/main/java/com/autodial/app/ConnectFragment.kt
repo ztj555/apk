@@ -20,7 +20,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -41,7 +40,6 @@ class ConnectFragment : Fragment() {
     private lateinit var batteryOptStatus: TextView
     private lateinit var batteryOptBtn: TextView
     private lateinit var batteryOptOk: TextView
-    private lateinit var dialModeStatus: TextView
 
     private var discoveredIP = ""
     private var discoveryJob: Job? = null
@@ -99,13 +97,6 @@ class ConnectFragment : Fragment() {
             updateBatteryOptUI()
             view.findViewById<View>(R.id.batteryOptRow).setOnClickListener {
                 requestIgnoreBatteryOptimization()
-            }
-
-            // 拨号卡选择
-            dialModeStatus = view.findViewById(R.id.dialModeStatus)
-            updateDialModeUI()
-            view.findViewById<View>(R.id.dialModeRow).setOnClickListener {
-                showDialModePicker()
             }
 
             // 注册广播
@@ -501,42 +492,5 @@ class ConnectFragment : Fragment() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-    }
-
-    // ==================== 拨号卡选择 ====================
-
-    private fun updateDialModeUI() {
-        if (!isAdded) return
-        val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
-        val modeKey = prefs.getString("dial_mode", DialMode.ALTERNATE.key) ?: DialMode.ALTERNATE.key
-        val mode = DialMode.fromKey(modeKey)
-        val descriptions = mapOf(
-            DialMode.ALTERNATE to "根据上次使用的卡自动交替",
-            DialMode.REMEMBER to "记住每个号码使用的卡，首次弹窗选择",
-            DialMode.SIM1 to "始终使用卡1",
-            DialMode.SIM2 to "始终使用卡2",
-            DialMode.POPUP to "每次拨号手动选择"
-        )
-        dialModeStatus.text = "${mode.label} - ${descriptions[mode] ?: ""}"
-    }
-
-    private fun showDialModePicker() {
-        val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
-        val currentKey = prefs.getString("dial_mode", DialMode.ALTERNATE.key) ?: DialMode.ALTERNATE.key
-
-        val labels = DialMode.entries.map { it.label }.toTypedArray()
-        val keys = DialMode.entries.map { it.key }.toTypedArray()
-        val currentIdx = keys.indexOf(currentKey).coerceAtLeast(0)
-
-        AlertDialog.Builder(requireActivity())
-            .setTitle("拨号卡选择")
-            .setSingleChoiceItems(labels, currentIdx) { dialog, which ->
-                prefs.edit().putString("dial_mode", keys[which]).apply()
-                updateDialModeUI()
-                dialog.dismiss()
-                Toast.makeText(requireActivity(), "已切换为：${labels[which]}模式", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("取消", null)
-            .show()
     }
 }

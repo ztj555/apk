@@ -20,4 +20,14 @@
         <item name="bottomSheetStyle">@style/Widget.Design.BottomSheet.Modal</item>
         <item name="android:windowBackground">@android:color/transparent</item>
     </style>
+
+    <!-- SimSelectActivity 透明全屏主题，用于在任何界面弹出选卡卡片 -->
+    <style name="Theme.AutoDial.SimSelect" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
 </resources>

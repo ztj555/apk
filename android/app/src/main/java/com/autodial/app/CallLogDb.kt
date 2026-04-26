@@ -51,11 +51,11 @@ class CallLogDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
 
     /** 记录一次拨号 */
-    fun insertDial(number: String, status: String = "ok") {
+    fun insertDial(number: String, status: String = "ok", simSlot: Int = 0) {
         val cv = ContentValues().apply {
             put(COL_NUMBER, number)
             put(COL_TIME, System.currentTimeMillis())
-            put(COL_SIM_SLOT, 0)  // 初始值，后续可通过通话记录补全
+            put(COL_SIM_SLOT, simSlot)
             put(COL_STATUS, status)
         }
         writableDatabase.insert(TABLE_DIAL, null, cv)
@@ -159,4 +159,44 @@ class CallLogDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_
     fun formatDateTime(timeMs: Long): String = dateTimeFormat.format(Date(timeMs))
 
     fun formatDate(timeMs: Long): String = dateFormat.format(Date(timeMs))
+
+    /**
+     * 查询该号码最近一次拨号使用的 SIM 卡槽
+     * @return 0=卡1, 1=卡2, -1=无记录
+     */
+    fun getLastSimSlot(number: String): Int {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_DIAL,
+            arrayOf(COL_SIM_SLOT),
+            "$COL_NUMBER = ? AND $COL_STATUS = 'ok'",
+            arrayOf(number),
+            null, null, "$COL_TIME DESC", "1"
+        )
+        val slot = if (cursor.moveToFirst()) cursor.getInt(0) else -1
+        cursor.close()
+        db.close()
+        return slot
+    }
+
+    /**
+     * 查询该号码最近一次拨号的时间和SIM卡（供弹窗显示）
+     * @return Pair(simSlot, timeMs) 或 null
+     */
+    fun getLastDialInfo(number: String): Pair<Int, Long>? {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_DIAL,
+            arrayOf(COL_SIM_SLOT, COL_TIME),
+            "$COL_NUMBER = ? AND $COL_STATUS = 'ok'",
+            arrayOf(number),
+            null, null, "$COL_TIME DESC", "1"
+        )
+        val result = if (cursor.moveToFirst()) {
+            Pair(cursor.getInt(0), cursor.getLong(1))
+        } else null
+        cursor.close()
+        db.close()
+        return result
+    }
 }

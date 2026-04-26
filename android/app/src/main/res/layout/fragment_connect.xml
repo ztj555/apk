@@ -215,51 +215,6 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- 拨号卡选择 -->
-        <LinearLayout
-            android:id="@+id/dialModeRow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="#1A1D24"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:paddingTop="14dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="14dp">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="拨号卡选择"
-                    android:textColor="#E8DCC8"
-                    android:textSize="16sp" />
-
-                <TextView
-                    android:id="@+id/dialModeStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:text="轮流"
-                    android:textColor="#605040"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="▶"
-                android:textColor="#605040"
-                android:textSize="14sp" />
-        </LinearLayout>
-
         <!-- 电池优化白名单 -->
         <LinearLayout
             android:id="@+id/batteryOptRow"
@@ -330,7 +285,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:layout_marginBottom="24dp"
-            android:text="AutoDial v1.1\n请确保手机和电脑在同一WiFi下"
+            android:text="AutoDial v1.2\n请确保手机和电脑在同一WiFi下"
             android:textSize="12sp"
             android:textColor="#605040"
             android:gravity="center" />

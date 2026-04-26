@@ -35,6 +35,14 @@
             </intent-filter>
         </activity>
 
+        <!-- 选卡弹窗：透明 Activity，可从任何界面弹出 -->
+        <activity
+            android:name=".SimSelectActivity"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@style/Theme.AutoDial.SimSelect" />
+
         <service
             android:name=".DialService"
             android:exported="false" />

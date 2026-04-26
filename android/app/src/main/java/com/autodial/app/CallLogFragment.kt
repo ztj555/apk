@@ -129,6 +129,10 @@ class CallLogFragment : Fragment() {
     private lateinit var lastCallHintBanner: View
     private lateinit var lastCallHintText: TextView
 
+    // 拨号模式按钮
+    private lateinit var dialModeButtons: List<TextView>
+    private lateinit var dialModeKeys: List<String>
+
     // 主刷新机制：监听通话结束广播，延迟1秒刷新
     private val callEndedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -179,6 +183,9 @@ class CallLogFragment : Fragment() {
 
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
+        // 拨号模式栏初始化
+        initDialModeBar(view)
+
         // 注册通话结束广播
         try {
             ContextCompat.registerReceiver(requireActivity(), callEndedReceiver,
@@ -205,6 +212,7 @@ class CallLogFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         loadCallLog()
+        updateDialModeBarUI()
     }
 
     override fun onDestroyView() {
@@ -213,6 +221,46 @@ class CallLogFragment : Fragment() {
         pollHandler.removeCallbacks(pollRunnable)
         try { requireActivity().unregisterReceiver(callEndedReceiver) } catch (_: Exception) {}
         try { requireActivity().unregisterReceiver(lastCallHintReceiver) } catch (_: Exception) {}
+    }
+
+    // ==================== 拨号模式切换 ====================
+
+    private fun initDialModeBar(view: View) {
+        dialModeButtons = listOf(
+            view.findViewById(R.id.dialModeAlternate),
+            view.findViewById(R.id.dialModeRemember),
+            view.findViewById(R.id.dialModeSim1),
+            view.findViewById(R.id.dialModeSim2),
+            view.findViewById(R.id.dialModePopup)
+        )
+        dialModeKeys = DialMode.entries.map { it.key }
+
+        dialModeButtons.forEachIndexed { index, btn ->
+            btn.setOnClickListener {
+                val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
+                prefs.edit().putString("dial_mode", dialModeKeys[index]).apply()
+                updateDialModeBarUI()
+                Toast.makeText(requireActivity(), "已切换为：${DialMode.entries[index].label}模式", Toast.LENGTH_SHORT).show()
+            }
+        }
+        updateDialModeBarUI()
+    }
+
+    private fun updateDialModeBarUI() {
+        if (!isAdded) return
+        val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
+        val currentKey = prefs.getString("dial_mode", DialMode.ALTERNATE.key) ?: DialMode.ALTERNATE.key
+        dialModeButtons.forEachIndexed { index, btn ->
+            if (dialModeKeys[index] == currentKey) {
+                btn.setBackgroundColor(android.graphics.Color.parseColor("#C9A84C"))
+                btn.setTextColor(android.graphics.Color.parseColor("#111318"))
+                btn.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            } else {
+                btn.setBackgroundColor(android.graphics.Color.parseColor("#22252E"))
+                btn.setTextColor(android.graphics.Color.parseColor("#A09070"))
+                btn.typeface = android.graphics.Typeface.DEFAULT
+            }
+        }
     }
 
     fun refreshIfNeeded() {
