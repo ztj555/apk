@@ -428,14 +428,14 @@ class DialService : Service() {
             DialMode.SIM2 -> 1
 
             DialMode.ALTERNATE -> {
-                // 全局轮流：不看号码，查上一次拨号用了哪张卡，就用另一张
+                // 循环模式：全局交替，不看号码，查上一次拨号用了哪张卡，就用另一张
                 val lastSlot = callLogDb.getLastSimSlotGlobal()
                 if (lastSlot >= 0) {
                     val next = 1 - lastSlot
-                    Log.d(TAG, "轮流模式（全局）：上次卡${lastSlot + 1}，本次卡${next + 1}")
+                    Log.d(TAG, "循环模式（全局）：上次卡${lastSlot + 1}，本次卡${next + 1}")
                     next
                 } else {
-                    Log.d(TAG, "轮流模式（全局）：无历史记录，默认卡1")
+                    Log.d(TAG, "循环模式（全局）：无历史记录，默认卡1")
                     0
                 }
             }
@@ -455,6 +455,22 @@ class DialService : Service() {
             DialMode.POPUP -> {
                 Log.d(TAG, "弹窗模式：发送广播弹出选卡卡片")
                 -1
+            }
+
+            DialMode.ROUND_SELECT -> {
+                // 轮选模式：未识别（系统通话记录中无此号码）→ 按循环模式拨号；已识别 → 弹窗让用户选择
+                val lastSlot = getLastDialHintForPopup(number)
+                if (lastSlot != null && lastSlot.first >= 0) {
+                    // 系统通话记录中有此号码 → 弹窗
+                    Log.d(TAG, "轮选模式：号码已识别（上次卡${lastSlot.first + 1}），弹窗选择")
+                    -1
+                } else {
+                    // 未识别 → 按循环模式拨号
+                    val globalLast = callLogDb.getLastSimSlotGlobal()
+                    val next = if (globalLast >= 0) 1 - globalLast else 0
+                    Log.d(TAG, "轮选模式：号码未识别，按循环模式拨卡${next + 1}")
+                    next
+                }
             }
         }
     }

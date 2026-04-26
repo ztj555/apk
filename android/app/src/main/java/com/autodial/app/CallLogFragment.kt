@@ -227,11 +227,12 @@ class CallLogFragment : Fragment() {
 
     private fun initDialModeBar(view: View) {
         dialModeButtons = listOf(
-            view.findViewById(R.id.dialModeAlternate),
-            view.findViewById(R.id.dialModeRemember),
+            view.findViewById(R.id.dialModePopup),
+            view.findViewById(R.id.dialModeRoundSelect),
             view.findViewById(R.id.dialModeSim1),
             view.findViewById(R.id.dialModeSim2),
-            view.findViewById(R.id.dialModePopup)
+            view.findViewById(R.id.dialModeAlternate),
+            view.findViewById(R.id.dialModeRemember)
         )
         dialModeKeys = DialMode.entries.map { it.key }
 

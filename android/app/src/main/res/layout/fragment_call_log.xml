@@ -51,27 +51,26 @@
         android:paddingBottom="8dp">
 
         <TextView
-            android:id="@+id/dialModeAlternate"
-            android:layout_width="0dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="#C9A84C"
-            android:gravity="center"
-            android:text="轮流"
-            android:textColor="#111318"
-            android:textSize="13sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/dialModeRemember"
+            android:id="@+id/dialModePopup"
             android:layout_width="0dp"
             android:layout_height="32dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
             android:background="#22252E"
             android:gravity="center"
-            android:text="记忆"
+            android:text="弹窗"
+            android:textColor="#A09070"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/dialModeRoundSelect"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="#22252E"
+            android:gravity="center"
+            android:text="轮选"
             android:textColor="#A09070"
             android:textSize="13sp" />
 
@@ -100,13 +99,25 @@
             android:textSize="13sp" />
 
         <TextView
-            android:id="@+id/dialModePopup"
+            android:id="@+id/dialModeAlternate"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="#22252E"
+            android:gravity="center"
+            android:text="循环"
+            android:textColor="#A09070"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/dialModeRemember"
             android:layout_width="0dp"
             android:layout_height="32dp"
             android:layout_weight="1"
             android:background="#22252E"
             android:gravity="center"
-            android:text="弹窗"
+            android:text="记忆"
             android:textColor="#A09070"
             android:textSize="13sp" />
     </LinearLayout>
