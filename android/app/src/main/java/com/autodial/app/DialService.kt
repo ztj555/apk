@@ -427,14 +427,14 @@ class DialService : Service() {
             DialMode.SIM2 -> 1
 
             DialMode.ALTERNATE -> {
-                // 查询 APP 自身数据库，最近一次该号码用了哪张卡，就用另一张
-                val lastSlot = callLogDb.getLastSimSlot(number)
+                // 全局轮流：不看号码，查上一次拨号用了哪张卡，就用另一张
+                val lastSlot = callLogDb.getLastSimSlotGlobal()
                 if (lastSlot >= 0) {
                     val next = 1 - lastSlot
-                    Log.d(TAG, "轮流模式：上次卡${lastSlot + 1}，本次卡${next + 1}")
+                    Log.d(TAG, "轮流模式（全局）：上次卡${lastSlot + 1}，本次卡${next + 1}")
                     next
                 } else {
-                    Log.d(TAG, "轮流模式：无历史记录，默认卡1")
+                    Log.d(TAG, "轮流模式（全局）：无历史记录，默认卡1")
                     0
                 }
             }

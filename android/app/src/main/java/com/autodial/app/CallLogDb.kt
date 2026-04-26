@@ -218,6 +218,41 @@ class CallLogDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_
     }
 
     /**
+     * 查询全局最近一次拨号使用的 SIM 卡槽（不分号码，用于轮流模式）
+     * 优先查 APP 拨号记录，fallback 查 sim_cache
+     * @return 0=卡1, 1=卡2, -1=无记录
+     */
+    fun getLastSimSlotGlobal(): Int {
+        // 1. 优先查 APP 自身的拨号记录（最新一条成功的）
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_DIAL,
+            arrayOf(COL_SIM_SLOT),
+            "$COL_STATUS = 'ok'",
+            null,
+            null, null, "$COL_TIME DESC", "1"
+        )
+        if (cursor.moveToFirst()) {
+            val slot = cursor.getInt(0)
+            cursor.close()
+            return slot
+        }
+        cursor.close()
+
+        // 2. fallback 查 sim_cache（最新的一条）
+        val cacheCursor = db.query(
+            TABLE_SIM_CACHE,
+            arrayOf(CACHE_COL_SIM_SLOT),
+            null, null,
+            null, null, "$CACHE_COL_TIME DESC", "1"
+        )
+        val cachedSlot = if (cacheCursor.moveToFirst()) cacheCursor.getInt(0) else -1
+        cacheCursor.close()
+        db.close()
+        return cachedSlot
+    }
+
+    /**
      * 查询该号码最近一次拨号使用的 SIM 卡槽
      * 优先查 APP 自身拨号记录，fallback 查 SIM 缓存（来自系统通话记录）
      * @return 0=卡1, 1=卡2, -1=无记录
