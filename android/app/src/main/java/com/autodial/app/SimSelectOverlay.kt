@@ -23,14 +23,14 @@ import java.util.*
  * 使用 WindowManager 悬浮窗实现选卡弹窗
  * 可从任何界面（包括桌面/其他 APP）弹出，需要 SYSTEM_ALERT_WINDOW 权限
  *
- * UI 风格：科技感暗金色主题
- * - 深色背景 + 金色边框光晕
- * - 卡按钮带渐变底色和金色/青色高亮
- * - 提示文字跟在按钮文字右侧，不另起一行
+ * UI 风格：科技感深蓝渐变主题
+ * - 深蓝色调背景 + 青蓝/金色点缀
+ * - 卡按钮带色带标识，按下态发光
+ * - 上次使用提示显示具体日期，跟在按钮右侧
  *
  * 参数说明：
  * - lastSimSlot / lastDialTime：该号码上次拨号的卡号和时间（来自系统通话记录）
- *   用于显示上方横幅和卡按钮后的"同上次"提示
+ *   用于显示上方横幅和按钮后的日期提示
  */
 object SimSelectOverlay {
 
@@ -42,25 +42,20 @@ object SimSelectOverlay {
     // 自动消失（30秒无操作）
     private val autoDismissRunnable = Runnable { dismiss() }
 
-    // 暗金色主题色值
-    private val BG_DARK = "#0D0F14"
-    private val BG_CARD = "#14171E"
-    private val BG_CARD_BORDER = "#2A2518"
-    private val BG_SIM_BTN = "#1A1D26"
-    private val BG_SIM_BTN_PRESSED = "#22262F"
-    private val BG_BANNER = "#1A1D26"
-    private val BG_CANCEL = "#1E2128"
-    private val GOLD = "#C9A84C"
-    private val GOLD_DIM = "#8B7340"
-    private val GOLD_GLOW = "#FFD700"
-    private val CYAN = "#2ECC71"
-    private val CYAN_DIM = "#1A8A4A"
-    private val TEXT_PRIMARY = "#E8DCC8"
-    private val TEXT_SUB = "#7A7260"
-    private val TEXT_HINT_SAME = "#C9A84C"
-    private val TEXT_HINT_SWITCH = "#5BC8AF"
-    private val DIVIDER = "#1E2128"
-    private val BORDER_GLOW = "#3A2F1A"
+    // 科技感深蓝色主题
+    private val BG_CARD = "#101B30"
+    private val BG_CARD_BORDER = "#1E3A5F"
+    private val BG_SIM_BTN = "#142240"
+    private val BG_SIM_BTN_PRESSED = "#1A2D52"
+    private val BG_BANNER = "#0F1E38"
+    private val BG_CANCEL = "#162840"
+    private val GOLD = "#F0C040"
+    private val CYAN = "#00D4AA"
+    private val TEXT_PRIMARY = "#D4E4F7"
+    private val TEXT_SUB = "#5A7A9A"
+    private val TEXT_HINT_SAME = "#F0C040"
+    private val DIVIDER = "#1A3050"
+    private val BORDER_GLOW = "#1E3A5F"
 
     /**
      * 弹出选卡悬浮窗
@@ -135,16 +130,16 @@ object SimSelectOverlay {
     /**
      * 构建悬浮窗 UI
      *
-     * 布局结构（科技感暗金色）：
-     * ┌══════════════════════════════┐  ← 金色细边框
+     * 布局结构（科技感深蓝主题）：
+     * ┌══════════════════════════════┐  ← 蓝色细边框
      * │     📞 19988886666           │  ← 号码（金色）
      * │  ┌─── 对比通话记录 ────────┐  │  ← 上方横幅（有历史时）
      * │  │▌ 上次：卡1  今天        │  │
      * │  └────────────────────────┘  │
      * │  ────────────────────────   │
-     * │  SIM 1   1  拨打 → 同上次  │  ← 按钮行（提示在右侧同行）
+     * │  SIM 1   1        04-26使用│  ← 按钮行（日期提示在右侧）
      * │  ────────────────────────   │
-     * │  SIM 2   2  拨打 → 推荐切换│  ← 按钮行
+     * │  SIM 2   2                  │  ← 按钮行
      * │         [ 取消 ]            │
      * └══════════════════════════════┘
      */
@@ -174,7 +169,7 @@ object SimSelectOverlay {
             gravity = Gravity.BOTTOM
         }
 
-        // 卡片背景（圆角 + 金色细边框）
+        // 卡片背景（圆角 + 蓝色边框）
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = createCardBackground(dp)
@@ -208,7 +203,8 @@ object SimSelectOverlay {
         // ─── 对比通话记录横幅 ───
         if (hasHistory) {
             val simColor = if (lastSimSlot == 0) GOLD else CYAN
-            val bannerText = "上次：卡${lastSimSlot + 1}  $displayDate"
+            // 横幅文字：醒目颜色，卡1/卡2 字体放大
+            // 用两个 TextView 分别设置样式
 
             val banner = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -222,7 +218,7 @@ object SimSelectOverlay {
                     topMargin = (14 * dp).toInt()
                 }
 
-                // 左侧竖条（金色/青色发光效果）
+                // 左侧竖条
                 val indicator = View(context).apply {
                     background = GradientDrawable().apply {
                         setColor(Color.parseColor(simColor))
@@ -235,14 +231,31 @@ object SimSelectOverlay {
                 }
                 addView(indicator)
 
-                val label = TextView(context).apply {
-                    text = "  $bannerText"
-                    setTextColor(Color.parseColor(simColor))
-                    textSize = 14f
+                // "上次：" 前缀
+                val prefix = TextView(context).apply {
+                    text = "  上次："
+                    setTextColor(Color.parseColor(TEXT_PRIMARY))
+                    textSize = 15f
                     typeface = Typeface.DEFAULT_BOLD
-                    letterSpacing = 0.02f
                 }
-                addView(label)
+                addView(prefix)
+
+                // "卡X" 放大醒目
+                val simLabel = TextView(context).apply {
+                    text = "卡${lastSimSlot + 1}"
+                    setTextColor(Color.parseColor(simColor))
+                    textSize = 19f
+                    typeface = Typeface.DEFAULT_BOLD
+                }
+                addView(simLabel)
+
+                // 日期
+                val dateLabel = TextView(context).apply {
+                    text = "  $displayDate"
+                    setTextColor(Color.parseColor(TEXT_SUB))
+                    textSize = 14f
+                }
+                addView(dateLabel)
             }
             card.addView(banner)
         }
@@ -251,10 +264,8 @@ object SimSelectOverlay {
         card.addView(createDivider(context, dp, 16, 14))
 
         // ─── 卡1 按钮 ───
-        val sim1Hint = if (hasHistory) {
-            if (lastSimSlot == 0) "同上次" else "推荐切换"
-        } else null
-        card.addView(createSimButton(context, dp, 0, "SIM 1", GOLD, sim1Hint, hasHistory && lastSimSlot == 0) {
+        val sim1Hint = if (hasHistory && lastSimSlot == 0) displayDate else null
+        card.addView(createSimButton(context, dp, 0, "SIM 1", GOLD, sim1Hint) {
             dialAndDismiss(context, number, 0)
         })
 
@@ -267,10 +278,8 @@ object SimSelectOverlay {
         })
 
         // ─── 卡2 按钮 ───
-        val sim2Hint = if (hasHistory) {
-            if (lastSimSlot == 1) "同上次" else "推荐切换"
-        } else null
-        card.addView(createSimButton(context, dp, 1, "SIM 2", CYAN, sim2Hint, hasHistory && lastSimSlot == 1) {
+        val sim2Hint = if (hasHistory && lastSimSlot == 1) displayDate else null
+        card.addView(createSimButton(context, dp, 1, "SIM 2", CYAN, sim2Hint) {
             dialAndDismiss(context, number, 1)
         })
 
@@ -304,17 +313,16 @@ object SimSelectOverlay {
     }
 
     /**
-     * 创建 SIM 卡选择按钮（单行布局，提示文字在右侧同行）
+     * 创建 SIM 卡选择按钮
      * @param dp density
      * @param simSlot 0=卡1, 1=卡2
      * @param label "SIM 1" / "SIM 2"
      * @param accentColor 主色调（金色/青色）
-     * @param hint 提示文字（null=不显示）
-     * @param isSameAsLast 是否与上次相同（影响提示样式）
+     * @param hintDate 提示日期文字（null=不显示），如 "今天"/"04-25"
      */
     private fun createSimButton(
         context: Context, dp: Float, simSlot: Int, label: String,
-        accentColor: String, hint: String?, isSameAsLast: Boolean, onClick: () -> Unit
+        accentColor: String, hintDate: String?, onClick: () -> Unit
     ): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -357,36 +365,20 @@ object SimSelectOverlay {
                 layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
             })
 
-            // 拨打箭头
-            val actionLabel = TextView(context).apply {
-                text = "使用卡${simSlot + 1}拨打 →"
-                setTextColor(Color.parseColor(TEXT_SUB))
-                textSize = 15f
-            }
-            addView(actionLabel)
-
-            // 提示文字（在箭头右边同行）
-            if (hint != null) {
+            // 右侧日期提示（仅与上次相同时显示）
+            if (hintDate != null) {
                 val hintLabel = TextView(context).apply {
-                    text = "  $hint"
-                    textSize = 13f
+                    text = "$hintDate使用"
+                    setTextColor(Color.parseColor(TEXT_HINT_SAME))
+                    textSize = 14f
                     typeface = Typeface.DEFAULT_BOLD
                     letterSpacing = 0.02f
-                    if (isSameAsLast) {
-                        setTextColor(Color.parseColor(TEXT_HINT_SAME))
-                        // 加淡金色圆角背景
-                        background = createHintBackground(dp, "#1A1A0E")
-                    } else {
-                        setTextColor(Color.parseColor(TEXT_HINT_SWITCH))
-                        background = createHintBackground(dp, "#0E1A18")
-                    }
+                    background = createHintBackground(dp, "#1A1A0E")
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        marginStart = (6 * dp).toInt()
-                    }
-                    setPadding((8 * dp).toInt(), (3 * dp).toInt(), (8 * dp).toInt(), (3 * dp).toInt())
+                    )
+                    setPadding((8 * dp).toInt(), (4 * dp).toInt(), (8 * dp).toInt(), (4 * dp).toInt())
                 }
                 addView(hintLabel)
             }
@@ -406,7 +398,7 @@ object SimSelectOverlay {
 
     // ==================== 绘制辅助 ====================
 
-    /** 卡片背景：深色 + 金色细边框 + 顶部发光线 */
+    /** 卡片背景：深蓝 + 蓝色细边框 */
     private fun createCardBackground(dp: Float): GradientDrawable {
         return GradientDrawable().apply {
             setColor(Color.parseColor(BG_CARD))
@@ -423,12 +415,12 @@ object SimSelectOverlay {
         }
     }
 
-    /** 卡按钮背景：左侧带颜色竖条 */
+    /** 卡按钮背景 */
     private fun createSimButtonBackground(dp: Float, accentColor: String, pressed: Boolean = false): GradientDrawable {
         return GradientDrawable().apply {
             setColor(Color.parseColor(if (pressed) BG_SIM_BTN_PRESSED else BG_SIM_BTN))
             cornerRadius = 12 * dp
-            setStroke(1, Color.parseColor(if (pressed) accentColor else "#2A2D34"))
+            setStroke(1, Color.parseColor(if (pressed) accentColor else "#1E3050"))
         }
     }
 
