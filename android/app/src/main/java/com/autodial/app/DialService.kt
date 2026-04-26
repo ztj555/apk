@@ -519,13 +519,23 @@ class DialService : Service() {
                 // 需要弹窗选择
                 pendingDialNumber = number
                 val lastHint = getLastDialHintForPopup(number)
-                val intent = Intent(ACTION_SHOW_SIM_SELECT).apply {
-                    putExtra("number", number)
-                    putExtra("last_sim_slot", lastHint?.first ?: -1)
-                    putExtra("last_dial_time", lastHint?.second ?: 0L)
-                    setPackage(packageName)
+                val lastSlot = lastHint?.first ?: -1
+                val lastTime = lastHint?.second ?: 0L
+
+                // 直接通过 Service 调用悬浮窗（不依赖 Activity 广播，避免 MIUI 后台丢广播）
+                if (SimSelectOverlay.hasPermission(this)) {
+                    SimSelectOverlay.show(this, number, lastSlot, lastTime)
+                } else {
+                    // 没有悬浮窗权限，回退到广播方式（需要 Activity 在前台）
+                    Log.w(TAG, "无悬浮窗权限，回退到广播方式弹窗")
+                    val intent = Intent(ACTION_SHOW_SIM_SELECT).apply {
+                        putExtra("number", number)
+                        putExtra("last_sim_slot", lastSlot)
+                        putExtra("last_dial_time", lastTime)
+                        setPackage(packageName)
+                    }
+                    sendBroadcast(intent)
                 }
-                sendBroadcast(intent)
             }
         } catch (e: Exception) {
             Log.e(TAG, "拨号失败: ${e.message}")
