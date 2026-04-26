@@ -91,6 +91,16 @@ class DialService : Service() {
                 acquire(12 * 60 * 60 * 1000L) // 12小时后自动释放
             }
 
+            // 异步同步系统通话记录到 SIM 缓存（首次安装或数据库升级后）
+            Thread {
+                try {
+                    val count = callLogDb.syncFromSystemCallLog(this@DialService)
+                    if (count > 0) Log.d(TAG, "SIM缓存同步完成：$count 个号码")
+                } catch (e: Exception) {
+                    Log.e(TAG, "SIM缓存同步失败: ${e.message}")
+                }
+            }.start()
+
             // 监听通话状态，通话结束时通知UI刷新通话记录
             registerCallStateListener()
 

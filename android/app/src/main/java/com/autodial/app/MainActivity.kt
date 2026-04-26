@@ -6,11 +6,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -100,11 +103,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 弹出透明 Activity 选卡（可在任何界面弹出，包括桌面）
+     * 用悬浮窗弹出选卡界面（可在桌面/其他 APP 上显示）
      */
     private fun showSimSelectSheet(number: String, lastSimSlot: Int, lastDialTime: Long) {
         try {
-            startActivity(SimSelectActivity.newIntent(this, number, lastSimSlot, lastDialTime))
+            if (SimSelectOverlay.hasPermission(this)) {
+                SimSelectOverlay.show(this, number, lastSimSlot, lastDialTime)
+            } else {
+                // 没有悬浮窗权限，引导用户开启
+                Toast.makeText(this, "请开启悬浮窗权限以显示选卡弹窗", Toast.LENGTH_LONG).show()
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivity(intent)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -153,6 +166,17 @@ class MainActivity : AppCompatActivity() {
         }
         if (needed.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, needed.toTypedArray(), 100)
+        }
+
+        // 悬浮窗权限需要特殊引导（不是运行时权限）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "弹窗选卡需要悬浮窗权限，请允许", Toast.LENGTH_LONG).show()
+            try {
+                startActivity(Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                ))
+            } catch (_: Exception) {}
         }
     }
 
