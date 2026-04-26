@@ -368,7 +368,7 @@ object SimSelectOverlay {
             // 右侧日期提示（仅与上次相同时显示）
             if (hintDate != null) {
                 val hintLabel = TextView(context).apply {
-                    text = "$hintDate使用"
+                    text = "${hintDate}使用"
                     setTextColor(Color.parseColor(TEXT_HINT_SAME))
                     textSize = 14f
                     typeface = Typeface.DEFAULT_BOLD
