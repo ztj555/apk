@@ -43,6 +43,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 监听 DialService 的选卡广播，弹出自定义 BottomSheet
+    private val simSelectReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val number = intent?.getStringExtra("number") ?: return
+            val lastHint = intent.getStringExtra("last_hint") ?: ""
+            showSimSelectSheet(number, lastHint)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -70,6 +79,12 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.RECEIVER_EXPORTED
         )
 
+        // 注册选卡广播
+        ContextCompat.registerReceiver(this, simSelectReceiver,
+            IntentFilter(DialService.ACTION_SHOW_SIM_SELECT),
+            ContextCompat.RECEIVER_EXPORTED
+        )
+
         // 启动后台服务
         startService(DialService.newIntent(this))
 
@@ -80,6 +95,30 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         try { unregisterReceiver(connectionReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(simSelectReceiver) } catch (_: Exception) {}
+    }
+
+    /**
+     * 弹出自定义 SIM 选卡 BottomSheet
+     */
+    private fun showSimSelectSheet(number: String, lastHint: String) {
+        try {
+            // 如果已经有弹窗在显示，不重复弹出
+            if (supportFragmentManager.findFragmentByTag(SimSelectBottomSheet.TAG) != null) return
+
+            val sheet = SimSelectBottomSheet.newInstance(number, lastHint) { num, simSlot ->
+                // 用户选好卡后，通知 DialService 拨号
+                val intent = Intent(this, DialService::class.java).apply {
+                    action = "DIAL_WITH_SIM"
+                    putExtra("number", num)
+                    putExtra("sim_slot", simSlot)
+                }
+                startService(intent)
+            }
+            sheet.show(supportFragmentManager, SimSelectBottomSheet.TAG)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun switchTab(index: Int) {
