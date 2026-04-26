@@ -458,11 +458,13 @@ class DialService : Service() {
             }
 
             DialMode.ROUND_SELECT -> {
-                // 轮选模式：未识别（系统通话记录中无此号码）→ 按循环模式拨号；已识别 → 弹窗让用户选择
-                val lastSlot = getLastDialHintForPopup(number)
-                if (lastSlot != null && lastSlot.first >= 0) {
-                    // 系统通话记录中有此号码 → 弹窗
-                    Log.d(TAG, "轮选模式：号码已识别（上次卡${lastSlot.first + 1}），弹窗选择")
+                // 轮选模式：未识别（APP数据库中无此号码）→ 按循环模式拨号；已识别 → 弹窗让用户选择
+                // 使用 APP 自身数据库查询（dial_log + sim_cache），不依赖实时查系统通话记录
+                // 避免 MIUI 后台限制 contentResolver.query 导致查询失败
+                val lastDialInfo = callLogDb.getLastDialInfo(number)
+                if (lastDialInfo != null && lastDialInfo.first >= 0) {
+                    // APP 数据库中有此号码 → 弹窗
+                    Log.d(TAG, "轮选模式：号码已识别（上次卡${lastDialInfo.first + 1}），弹窗选择")
                     -1
                 } else {
                     // 未识别 → 按循环模式拨号
@@ -476,48 +478,13 @@ class DialService : Service() {
     }
 
     /**
-     * 直接从系统通话记录查询该号码最近一次拨号信息（供弹窗显示）
-     * 与"对比通话记录"功能共用同一数据源，确保数据一致性
+     * 从 APP 自身数据库查询该号码最近一次拨号信息（供弹窗显示）
+     * 优先查 dial_log（APP 拨号记录），fallback 查 sim_cache（系统通话记录同步缓存）
      * @return Pair(simSlot, timeMs) 或 null
      */
     private fun getLastDialHintForPopup(number: String): Pair<Int, Long>? {
         return try {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG)
-                != PackageManager.PERMISSION_GRANTED) return null
-
-            @Suppress("DEPRECATION")
-            val cursor = contentResolver.query(
-                android.provider.CallLog.Calls.CONTENT_URI,
-                arrayOf(
-                    android.provider.CallLog.Calls.DATE,
-                    android.provider.CallLog.Calls.PHONE_ACCOUNT_ID
-                ),
-                "${android.provider.CallLog.Calls.NUMBER} = ?",
-                arrayOf(number),
-                "${android.provider.CallLog.Calls.DATE} DESC"
-            ) ?: return null
-
-            cursor.use {
-                if (it.moveToFirst()) {
-                    val date = it.getLong(it.getColumnIndex(android.provider.CallLog.Calls.DATE))
-                    val subId = it.getString(it.getColumnIndex(android.provider.CallLog.Calls.PHONE_ACCOUNT_ID))
-
-                    var simSlot = 0
-                    try {
-                        val simList = getSimInfoList()
-                        if (subId != null) {
-                            for (info in simList) {
-                                if (info.subscriptionId.toString() == subId) {
-                                    simSlot = info.simSlotIndex
-                                    break
-                                }
-                            }
-                        }
-                    } catch (_: Exception) {}
-
-                    Pair(simSlot, date)
-                } else null
-            }
+            callLogDb.getLastDialInfo(number)
         } catch (e: Exception) {
             Log.e(TAG, "查询上次拨号信息失败: ${e.message}")
             null
