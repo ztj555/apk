@@ -215,6 +215,70 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- 电池优化白名单 -->
+        <LinearLayout
+            android:id="@+id/batteryOptRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="电池优化"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/batteryOptStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="检测中..."
+                    android:textColor="#605040"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/batteryOptBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:background="#C9A84C"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="去设置"
+                android:textColor="#111318"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/batteryOptOk"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="✅ 已设置"
+                android:textColor="#2ECC71"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
         <!-- 关于信息 -->
         <TextView
             android:layout_width="wrap_content"

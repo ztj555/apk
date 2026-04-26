@@ -1,6 +1,10 @@
 package com.autodial.app
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -29,6 +33,16 @@ class MainActivity : AppCompatActivity() {
         StatsFragment()
     )
 
+    // 监听连接状态变化，连接成功时自动跳转通话记录页
+    private val connectionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val connected = intent?.getBooleanExtra("connected", false) ?: return
+            if (connected) {
+                switchTab(1)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -50,11 +64,22 @@ class MainActivity : AppCompatActivity() {
         tabCallLog.setOnClickListener { switchTab(1) }
         tabStats.setOnClickListener { switchTab(2) }
 
+        // 注册连接状态广播
+        ContextCompat.registerReceiver(this, connectionReceiver,
+            IntentFilter("com.autodial.CONNECTION_CHANGE"),
+            ContextCompat.RECEIVER_EXPORTED
+        )
+
         // 启动后台服务
         startService(DialService.newIntent(this))
 
         // 请求权限
         requestPermissions()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try { unregisterReceiver(connectionReceiver) } catch (_: Exception) {}
     }
 
     private fun switchTab(index: Int) {

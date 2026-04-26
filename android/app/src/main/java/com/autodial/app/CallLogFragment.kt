@@ -40,6 +40,7 @@ class CallLogAdapter(private val records: List<PhoneCallRecord>) :
         val time: TextView = view.findViewById(R.id.itemCallTime)
         val callType: TextView = view.findViewById(R.id.itemCallType)
         val simSlot: TextView = view.findViewById(R.id.itemSimSlot)
+        val callStatus: TextView = view.findViewById(R.id.itemCallStatus)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -62,12 +63,42 @@ class CallLogAdapter(private val records: List<PhoneCallRecord>) :
         // 时间
         holder.time.text = timeFormat.format(Date(record.time))
 
-        // 通话类型
+        // 通话类型图标
         holder.callType.text = when (record.type) {
             CallLog.Calls.OUTGOING_TYPE -> "📞"
             CallLog.Calls.INCOMING_TYPE -> "📥"
             CallLog.Calls.MISSED_TYPE -> "❌"
             else -> "📞"
+        }
+
+        // 通话状态文字 + 颜色
+        when (record.type) {
+            CallLog.Calls.OUTGOING_TYPE -> {
+                if (record.duration > 0) {
+                    holder.callStatus.text = formatDuration(record.duration)
+                    holder.callStatus.setTextColor(0xFF2ECC71.toInt())   // 绿色：接通
+                } else {
+                    holder.callStatus.text = "未接通"
+                    holder.callStatus.setTextColor(0xFFE74C3C.toInt())   // 红色：未接通
+                }
+            }
+            CallLog.Calls.INCOMING_TYPE -> {
+                if (record.duration > 0) {
+                    holder.callStatus.text = formatDuration(record.duration)
+                    holder.callStatus.setTextColor(0xFF2ECC71.toInt())
+                } else {
+                    holder.callStatus.text = "未接听"
+                    holder.callStatus.setTextColor(0xFFE74C3C.toInt())
+                }
+            }
+            CallLog.Calls.MISSED_TYPE -> {
+                holder.callStatus.text = "未接"
+                holder.callStatus.setTextColor(0xFFE74C3C.toInt())
+            }
+            else -> {
+                holder.callStatus.text = "-"
+                holder.callStatus.setTextColor(0xFFA09070.toInt())
+            }
         }
 
         // SIM卡标识
@@ -76,6 +107,13 @@ class CallLogAdapter(private val records: List<PhoneCallRecord>) :
             holder.simSlot.setTextColor(0xFF2ECC71.toInt())
         } else {
             holder.simSlot.setTextColor(0xFFC9A84C.toInt())
+        }
+    }
+
+    private fun formatDuration(seconds: Long): String {
+        return when {
+            seconds < 60 -> "${seconds}s"
+            else -> "${seconds / 60}m${seconds % 60}s"
         }
     }
 
@@ -88,6 +126,8 @@ class CallLogFragment : Fragment() {
     private lateinit var emptyView: View
     private lateinit var countText: TextView
     private lateinit var permissionHint: View
+    private lateinit var lastCallHintBanner: View
+    private lateinit var lastCallHintText: TextView
 
     // 主刷新机制：监听通话结束广播，延迟1秒刷新
     private val callEndedReceiver = object : BroadcastReceiver() {
@@ -95,6 +135,19 @@ class CallLogFragment : Fragment() {
             // 通话结束后系统需要一点时间写入通话记录，延迟1秒再刷新
             refreshHandler.removeCallbacks(refreshRunnable)
             refreshHandler.postDelayed(refreshRunnable, 1000)
+        }
+    }
+
+    // 拨号前提示广播：显示上次使用哪张卡
+    private val lastCallHintReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val hint = intent?.getStringExtra("hint") ?: return
+            if (isAdded) {
+                lastCallHintText.text = hint
+                lastCallHintBanner.visibility = View.VISIBLE
+                // 10秒后自动消失
+                refreshHandler.postDelayed({ lastCallHintBanner.visibility = View.GONE }, 10000)
+            }
         }
     }
 
@@ -121,6 +174,8 @@ class CallLogFragment : Fragment() {
         emptyView = view.findViewById(R.id.callLogEmpty)
         countText = view.findViewById(R.id.callLogCount)
         permissionHint = view.findViewById(R.id.callLogPermissionHint)
+        lastCallHintBanner = view.findViewById(R.id.lastCallHintBanner)
+        lastCallHintText = view.findViewById(R.id.lastCallHintText)
 
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
@@ -128,6 +183,14 @@ class CallLogFragment : Fragment() {
         try {
             ContextCompat.registerReceiver(requireActivity(), callEndedReceiver,
                 IntentFilter("com.autodial.CALL_ENDED"),
+                ContextCompat.RECEIVER_EXPORTED
+            )
+        } catch (_: Exception) {}
+
+        // 注册上次通话提示广播
+        try {
+            ContextCompat.registerReceiver(requireActivity(), lastCallHintReceiver,
+                IntentFilter("com.autodial.LAST_CALL_HINT"),
                 ContextCompat.RECEIVER_EXPORTED
             )
         } catch (_: Exception) {}
@@ -149,6 +212,7 @@ class CallLogFragment : Fragment() {
         refreshHandler.removeCallbacks(refreshRunnable)
         pollHandler.removeCallbacks(pollRunnable)
         try { requireActivity().unregisterReceiver(callEndedReceiver) } catch (_: Exception) {}
+        try { requireActivity().unregisterReceiver(lastCallHintReceiver) } catch (_: Exception) {}
     }
 
     fun refreshIfNeeded() {

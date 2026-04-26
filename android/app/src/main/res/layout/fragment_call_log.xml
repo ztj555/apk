@@ -50,6 +50,37 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
+    <!-- 上次通话提示横幅（拨号前对比） -->
+    <LinearLayout
+        android:id="@+id/lastCallHintBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#1A2030"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📌 "
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/lastCallHintText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="上次：卡1  04-25"
+            android:textColor="#C9A84C"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
     <!-- 通话记录列表 -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/callLogRecyclerView"

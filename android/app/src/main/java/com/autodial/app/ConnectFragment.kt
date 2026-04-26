@@ -5,10 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -35,6 +38,9 @@ class ConnectFragment : Fragment() {
     private lateinit var foundPCInfo: LinearLayout
     private lateinit var foundPCText: TextView
     private lateinit var autoConnectSwitch: TextView
+    private lateinit var batteryOptStatus: TextView
+    private lateinit var batteryOptBtn: TextView
+    private lateinit var batteryOptOk: TextView
 
     private var discoveredIP = ""
     private var discoveryJob: Job? = null
@@ -66,6 +72,9 @@ class ConnectFragment : Fragment() {
             foundPCInfo = view.findViewById(R.id.foundPCInfo)
             foundPCText = view.findViewById(R.id.foundPCText)
             autoConnectSwitch = view.findViewById(R.id.autoConnectSwitch)
+            batteryOptStatus = view.findViewById(R.id.batteryOptStatus)
+            batteryOptBtn = view.findViewById(R.id.batteryOptBtn)
+            batteryOptOk = view.findViewById(R.id.batteryOptOk)
 
             connectBtn.setOnClickListener { toggleConnection() }
 
@@ -83,6 +92,12 @@ class ConnectFragment : Fragment() {
                 val newValue = !current
                 prefs.edit().putBoolean("auto_reconnect", newValue).apply()
                 updateAutoConnectUI(newValue)
+            }
+
+            // 电池优化检测
+            updateBatteryOptUI()
+            view.findViewById<View>(R.id.batteryOptRow).setOnClickListener {
+                requestIgnoreBatteryOptimization()
             }
 
             // 注册广播
@@ -129,6 +144,8 @@ class ConnectFragment : Fragment() {
                 updateConnectionUI(false, null)
             }
         } catch (_: Exception) {}
+        // 从系统设置返回后刷新电池优化状态
+        if (isAdded) updateBatteryOptUI()
     }
 
     override fun onDestroyView() {
@@ -352,6 +369,54 @@ class ConnectFragment : Fragment() {
         } else {
             autoConnectSwitch.text = "关"
             autoConnectSwitch.setBackgroundColor(Color.parseColor("#3A3D44"))
+        }
+    }
+
+    private fun updateBatteryOptUI() {
+        if (!isAdded) return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val pm = requireActivity().getSystemService(Context.POWER_SERVICE) as PowerManager
+                val ignored = pm.isIgnoringBatteryOptimizations(requireActivity().packageName)
+                if (ignored) {
+                    batteryOptStatus.text = "无限制，后台连接更稳定"
+                    batteryOptBtn.visibility = View.GONE
+                    batteryOptOk.visibility = View.VISIBLE
+                } else {
+                    batteryOptStatus.text = "受限，可能导致后台断连"
+                    batteryOptBtn.visibility = View.VISIBLE
+                    batteryOptOk.visibility = View.GONE
+                }
+            } else {
+                batteryOptStatus.text = "当前系统版本无需设置"
+                batteryOptBtn.visibility = View.GONE
+                batteryOptOk.visibility = View.VISIBLE
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun requestIgnoreBatteryOptimization() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val pm = requireActivity().getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (!pm.isIgnoringBatteryOptimizations(requireActivity().packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:${requireActivity().packageName}")
+                    }
+                    startActivity(intent)
+                } else {
+                    Toast.makeText(requireActivity(), "已设置为无限制", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            // 部分机型不支持直接跳转，退到应用设置页
+            try {
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:${requireActivity().packageName}")
+                }
+                startActivity(intent)
+                Toast.makeText(requireActivity(), "请在「电量」中选择「无限制」", Toast.LENGTH_LONG).show()
+            } catch (_: Exception) {}
         }
     }
 

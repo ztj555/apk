@@ -32,6 +32,7 @@ class DialService : Service() {
         private const val ACTION_CONNECTION = "com.autodial.CONNECTION_CHANGE"
         private const val ACTION_NEW_DIAL = "com.autodial.NEW_DIAL"
         private const val ACTION_CALL_ENDED = "com.autodial.CALL_ENDED"
+        private const val ACTION_LAST_CALL_HINT = "com.autodial.LAST_CALL_HINT"
 
         var isRunning = false
             private set
@@ -340,6 +341,76 @@ class DialService : Service() {
         } catch (_: Exception) {}
     }
 
+    /**
+     * 在拨号前查询系统通话记录，找到该号码最近一次通话，
+     * 广播提示 UI 显示"上次：卡X  M月D日"
+     */
+    private fun notifyLastCallHint(number: String) {
+        try {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CALL_LOG)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+
+            @Suppress("DEPRECATION")
+            val cursor = contentResolver.query(
+                android.provider.CallLog.Calls.CONTENT_URI,
+                arrayOf(
+                    android.provider.CallLog.Calls.NUMBER,
+                    android.provider.CallLog.Calls.DATE,
+                    android.provider.CallLog.Calls.PHONE_ACCOUNT_ID
+                ),
+                "${android.provider.CallLog.Calls.NUMBER} = ?",
+                arrayOf(number),
+                "${android.provider.CallLog.Calls.DATE} DESC"
+            ) ?: return
+
+            cursor.use {
+                if (it.moveToFirst()) {
+                    val date = it.getLong(it.getColumnIndex(android.provider.CallLog.Calls.DATE))
+                    val subId = it.getString(it.getColumnIndex(android.provider.CallLog.Calls.PHONE_ACCOUNT_ID))
+
+                    // 映射 subId → simSlot
+                    var simSlot = 0
+                    try {
+                        val subscriptionManager = getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE)
+                                as? android.telephony.SubscriptionManager
+                        val simInfoList = subscriptionManager?.activeSubscriptionInfoList
+                        if (subId != null && simInfoList != null) {
+                            for (info in simInfoList) {
+                                if (info.subscriptionId.toString() == subId) {
+                                    simSlot = info.simSlotIndex
+                                    break
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    // 格式化日期：今天/昨天/M月D日
+                    val cal = java.util.Calendar.getInstance()
+                    val today = java.text.SimpleDateFormat("MM-dd", java.util.Locale.getDefault()).format(cal.time)
+                    cal.add(java.util.Calendar.DAY_OF_MONTH, -1)
+                    val yesterday = java.text.SimpleDateFormat("MM-dd", java.util.Locale.getDefault()).format(cal.time)
+                    val dateStr = java.text.SimpleDateFormat("MM-dd", java.util.Locale.getDefault()).format(java.util.Date(date))
+                    val displayDate = when (dateStr) {
+                        today -> "今天"
+                        yesterday -> "昨天"
+                        else -> dateStr
+                    }
+
+                    val hint = "上次：卡${simSlot + 1}  $displayDate"
+                    val intent = Intent(ACTION_LAST_CALL_HINT).apply {
+                        putExtra("number", number)
+                        putExtra("hint", hint)
+                        setPackage(packageName)
+                    }
+                    sendBroadcast(intent)
+                }
+                // 没有记录时不发广播，UI 会清空提示
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "查询上次通话失败: ${e.message}")
+        }
+    }
+
     // ==================== 通知 UI ====================
 
     private fun notifyConnectionChange(connected: Boolean, reason: String?) {
@@ -367,6 +438,9 @@ class DialService : Service() {
 
     private fun dialNumber(number: String) {
         try {
+            // 先查上次通话记录，广播提示
+            notifyLastCallHint(number)
+
             if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CALL_PHONE)
                 != PackageManager.PERMISSION_GRANTED
             ) {
