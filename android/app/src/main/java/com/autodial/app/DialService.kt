@@ -3,6 +3,7 @@ package com.autodial.app
 import android.Manifest
 import android.app.*
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -204,7 +205,7 @@ class DialService : Service() {
                                 handler.post {
                                     updateNotification("已连接到电脑")
                                     getSharedPreferences("autodial", MODE_PRIVATE)
-                                        .putBoolean("was_connected", true).apply()
+                                        .edit().putBoolean("was_connected", true).apply()
                                     notifyConnectionChange(true, null)
                                 }
                             }
