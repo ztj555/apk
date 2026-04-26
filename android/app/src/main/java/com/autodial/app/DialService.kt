@@ -459,12 +459,48 @@ class DialService : Service() {
     }
 
     /**
-     * 从 APP 自身数据库查询该号码最近一次拨号信息（供弹窗显示）
+     * 直接从系统通话记录查询该号码最近一次拨号信息（供弹窗显示）
+     * 与"对比通话记录"功能共用同一数据源，确保数据一致性
      * @return Pair(simSlot, timeMs) 或 null
      */
     private fun getLastDialHintForPopup(number: String): Pair<Int, Long>? {
         return try {
-            callLogDb.getLastDialInfo(number)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG)
+                != PackageManager.PERMISSION_GRANTED) return null
+
+            @Suppress("DEPRECATION")
+            val cursor = contentResolver.query(
+                android.provider.CallLog.Calls.CONTENT_URI,
+                arrayOf(
+                    android.provider.CallLog.Calls.DATE,
+                    android.provider.CallLog.Calls.PHONE_ACCOUNT_ID
+                ),
+                "${android.provider.CallLog.Calls.NUMBER} = ?",
+                arrayOf(number),
+                "${android.provider.CallLog.Calls.DATE} DESC"
+            ) ?: return null
+
+            cursor.use {
+                if (it.moveToFirst()) {
+                    val date = it.getLong(it.getColumnIndex(android.provider.CallLog.Calls.DATE))
+                    val subId = it.getString(it.getColumnIndex(android.provider.CallLog.Calls.PHONE_ACCOUNT_ID))
+
+                    var simSlot = 0
+                    try {
+                        val simList = getSimInfoList()
+                        if (subId != null) {
+                            for (info in simList) {
+                                if (info.subscriptionId.toString() == subId) {
+                                    simSlot = info.simSlotIndex
+                                    break
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    Pair(simSlot, date)
+                } else null
+            }
         } catch (e: Exception) {
             Log.e(TAG, "查询上次拨号信息失败: ${e.message}")
             null
