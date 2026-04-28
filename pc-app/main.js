@@ -16,7 +16,9 @@ const DEFAULT_SETTINGS = {
   closeAction: 'minimize',   // 'minimize' | 'exit'
   trayExit: true,            // 托盘右键退出直接退出程序
   autoStart: false,          // 开机自启动
-  silentStart: false         // 隐藏界面启动
+  silentStart: false,        // 隐藏界面启动
+  theme: 'dark-gold',        // 主题ID
+  mode: 'dark'               // 显示模式 dark/light
 };
 
 function loadSettings() {
@@ -36,14 +38,7 @@ function saveSettings(settings) {
 
 let appSettings = loadSettings();
 
-// clipboardy 是 ES Module，需要动态导入
-let clipboardy = null;
-async function getClipboardy() {
-  if (!clipboardy) {
-    clipboardy = await import('clipboardy');
-  }
-  return clipboardy;
-}
+const { clipboard } = require('electron');
 
 // ==================== 日志系统 ====================
 const _logBuffer = [];
@@ -323,6 +318,8 @@ function createMainWindow() {
       if (phoneSocket && phoneSocket.readyState === WebSocket.OPEN) {
         mainWindow.webContents.send('status-update', { connected: true, phoneIP: phoneIP });
       }
+      // 推送当前主题设置
+      mainWindow.webContents.send('theme-changed', { theme: appSettings.theme, mode: appSettings.mode });
     } catch (e) {}
   });
 }
@@ -367,6 +364,10 @@ function createFloatBarWindow() {
 
   floatBarWindow.webContents.on('did-finish-load', () => {
     _flushLogBuffer(floatBarWindow);
+    // 推送当前主题设置
+    try {
+      floatBarWindow.webContents.send('theme-changed', { theme: appSettings.theme, mode: appSettings.mode });
+    } catch (e) {}
   });
 }
 
@@ -375,6 +376,38 @@ function createFloatBarWindow() {
 // 获取设置
 ipcMain.handle('get-settings', async () => {
   return appSettings;
+});
+
+// 获取当前主题设置
+ipcMain.handle('get-theme-setting', async () => {
+  return { theme: appSettings.theme, mode: appSettings.mode };
+});
+
+// 切换主题
+ipcMain.on('change-theme', (event, data) => {
+  if (data.id) appSettings.theme = data.id;
+  if (data.mode) appSettings.mode = data.mode;
+  saveSettings(appSettings);
+  console.log('[主题] ' + appSettings.theme + ' / ' + appSettings.mode);
+  // 广播给所有窗口
+  [mainWindow, floatBarWindow, settingsWindow].forEach(win => {
+    if (win && !win.isDestroyed()) {
+      try { win.webContents.send('theme-changed', { theme: appSettings.theme, mode: appSettings.mode }); } catch (e) {}
+    }
+  });
+});
+
+// 更新窗口背景色
+ipcMain.on('update-bg-color', (event, color) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    try {
+      // 跳过 rgba 颜色（毛玻璃等），Electron backgroundColor 不支持透明
+      if (color && !color.startsWith('rgba')) {
+        win.setBackgroundColor(color);
+      }
+    } catch (e) {}
+  }
 });
 
 // 保存单个设置项
@@ -416,6 +449,12 @@ ipcMain.on('open-settings', () => {
   settingsWindow.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
   settingsWindow.setMenuBarVisibility(false);
   settingsWindow.on('closed', () => { settingsWindow = null; });
+  // 推送当前主题设置
+  settingsWindow.webContents.on('did-finish-load', () => {
+    try {
+      settingsWindow.webContents.send('theme-changed', { theme: appSettings.theme, mode: appSettings.mode });
+    } catch (e) {}
+  });
 });
 
 // 关闭设置窗口
@@ -437,21 +476,17 @@ ipcMain.handle('get-info', async () => {
   };
 });
 
-// 读取系统剪贴板（使用 clipboardy ESM 动态导入，不启动子进程）
+// 读取系统剪贴板
 ipcMain.handle('read-clipboard', async () => {
   try {
-    const lib = await getClipboardy();
-    const text = (await lib.default.read()).trim();
+    const text = (clipboard.readText() || '').trim();
     return { text: text || '' };
   } catch (e) {
     return { text: '' };
   }
 });
 
-// OCR 截屏扫描（已废弃，改为剪贴板检测，保留空 handler 防报错）
-ipcMain.handle('scan-screen', async () => {
-  return { text: '', phone: null, error: 'OCR 功能已改为剪贴板检测，请直接复制号码' };
-});
+// OCR 功能已移除（tesseract.js 已卸载）
 
 // 拨号指令
 ipcMain.on('dial', (event, number) => {
@@ -609,10 +644,8 @@ const server = http.createServer((req, res) => {
     
     phoneSocket.send(JSON.stringify({ type: 'dial', number }));
 
-    // 同时将号码写入剪贴板（插件 Service Worker 无法写剪贴板，由主程序代劳）
-    getClipboardy().then(lib => {
-      lib.default.write(number).catch(() => {});
-    }).catch(() => {});
+    // 同时将号码写入剪贴板
+    try { clipboard.writeText(number); } catch (e) {}
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ success: true, number: number }));

@@ -16,13 +16,21 @@
     --text2: #A09070;
     --green: #2ECC71;
     --red: #E74C3C;
+    --radius-sm: 5px;
+    --radius-md: 10px;
+    --radius-lg: 24px;
+    --shadow: none;
+    --font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    --gradient-green: linear-gradient(135deg, #27AE60, #1E8449);
+    --gradient-red: linear-gradient(135deg, #C0392B, #96281B);
+    --glow-text: none;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%; height: 100%;
     background: var(--bg);
     color: var(--text);
-    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    font-family: var(--font-family);
     overflow: hidden;
     user-select: none;
   }
@@ -72,7 +80,7 @@
   /* 内容 */
   .content {
     flex: 1;
-    padding: 20px;
+    padding: 16px;
     overflow-y: auto;
   }
   .content::-webkit-scrollbar { width: 3px; }
@@ -83,7 +91,7 @@
     color: var(--text2);
     letter-spacing: 1px;
     text-transform: uppercase;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     padding-bottom: 6px;
     border-bottom: 1px solid var(--bg3);
   }
@@ -94,12 +102,18 @@
     justify-content: space-between;
     padding: 12px 14px;
     background: var(--bg2);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     margin-bottom: 8px;
     border: 1px solid var(--bg3);
     transition: border-color 0.2s;
   }
   .setting-item:hover { border-color: var(--gold-dark); }
+
+  /* 纵向布局的设置项（主题选择器） */
+  .setting-item.column {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
   .setting-info {
     flex: 1;
@@ -163,7 +177,7 @@
     padding: 5px 12px;
     background: var(--bg);
     border: 1px solid var(--bg3);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-size: 12px;
     color: var(--text2);
     cursor: pointer;
@@ -177,16 +191,75 @@
     font-weight: 600;
   }
 
-  .spacer { height: 16px; }
+  .spacer { height: 14px; }
+
+  /* ==================== 主题选择器 ==================== */
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+    width: 100%;
+  }
+  .theme-card {
+    cursor: pointer;
+    text-align: center;
+    transition: transform 0.15s;
+    padding: 4px;
+  }
+  .theme-card:hover { transform: scale(1.05); }
+  .theme-card.active { transform: scale(1.05); }
+  .theme-preview {
+    width: 100%;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    border: 2px solid transparent;
+    overflow: hidden;
+    display: flex;
+    margin-bottom: 4px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .theme-preview > span {
+    flex: 1;
+    height: 100%;
+  }
+  .theme-card.active .theme-preview {
+    border-color: var(--gold);
+    box-shadow: 0 0 8px rgba(201,168,76,0.4);
+  }
+  .theme-name {
+    font-size: 9px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+
+  /* 模式选择行 */
+  .mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--bg3);
+  }
+  .mode-row .setting-label {
+    font-size: 12px;
+    margin-bottom: 0;
+  }
 
   .footer {
     text-align: center;
-    padding: 12px;
+    padding: 10px;
     font-size: 10px;
-    color: #444;
+    color: var(--text2);
     flex-shrink: 0;
   }
 </style>
+<script src="../themes/theme-data.js"></script>
+<script src="js/theme.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -203,6 +276,27 @@
   </div>
 
   <div class="content">
+    <!-- 外观 -->
+    <div class="section-title">外观</div>
+
+    <div class="setting-item column">
+      <div class="setting-info" style="width:100%">
+        <div class="setting-label">主题</div>
+        <div class="setting-desc">选择界面风格和配色方案</div>
+      </div>
+      <div class="theme-grid" id="themeGrid"></div>
+      <div class="mode-row">
+        <div class="setting-label">显示模式</div>
+        <div class="select-group" id="modeSelect">
+          <div class="select-option active" data-value="dark">&#x1F319; 暗色</div>
+          <div class="select-option" data-value="light">&#x2600; 亮色</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- 窗口行为 -->
     <div class="section-title">窗口行为</div>
 
     <div class="setting-item">
@@ -219,7 +313,7 @@
     <div class="setting-item">
       <div class="setting-info">
         <div class="setting-label">托盘图标退出</div>
-        <div class="setting-desc">关闭窗口后，托盘右键退出时直接退出程序（不需要二次退出）</div>
+        <div class="setting-desc">右键托盘退出时直接退出程序</div>
       </div>
       <label class="switch">
         <input type="checkbox" id="trayExit" checked>
@@ -228,6 +322,8 @@
     </div>
 
     <div class="spacer"></div>
+
+    <!-- 启动 -->
     <div class="section-title">启动</div>
 
     <div class="setting-item">
@@ -253,18 +349,72 @@
     </div>
   </div>
 
-  <div class="footer">AutoDial v3.0</div>
+  <div class="footer">AutoDial v3.1</div>
 </div>
 
 <script>
+/* 初始化主题 */
+if (typeof ThemeEngine !== 'undefined') ThemeEngine.initTheme();
+
 document.getElementById('btnClose').addEventListener('click', () => {
   window.api.send('close-settings');
+});
+
+// ==================== 主题选择器 ====================
+let currentTheme = 'dark-gold';
+let currentMode = 'dark';
+
+function renderThemeCards() {
+  const grid = document.getElementById('themeGrid');
+  grid.innerHTML = '';
+  THEME_DATA.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'theme-card';
+    card.dataset.id = t.id;
+    // 使用暗色预览
+    const preview = t.dark;
+    card.innerHTML =
+      '<div class="theme-preview">' +
+        '<span style="background:' + preview.gold + '"></span>' +
+        '<span style="background:' + preview.bg + '"></span>' +
+        '<span style="background:' + preview.bg2 + '"></span>' +
+        '<span style="background:' + preview.text + '"></span>' +
+      '</div>' +
+      '<div class="theme-name">' + t.name + '</div>';
+    card.addEventListener('click', () => selectTheme(t.id));
+    grid.appendChild(card);
+  });
+}
+
+function selectTheme(id) {
+  currentTheme = id;
+  document.querySelectorAll('.theme-card').forEach(c =>
+    c.classList.toggle('active', c.dataset.id === id)
+  );
+  window.api.send('change-theme', { id: id });
+  if (typeof ThemeEngine !== 'undefined') {
+    ThemeEngine.applyTheme(id, currentMode);
+  }
+}
+
+// 模式切换
+document.querySelectorAll('#modeSelect .select-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('#modeSelect .select-option').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+    currentMode = opt.dataset.value;
+    window.api.send('change-theme', { id: currentTheme, mode: currentMode });
+    if (typeof ThemeEngine !== 'undefined') {
+      ThemeEngine.applyTheme(currentTheme, currentMode);
+    }
+  });
 });
 
 // ==================== 加载设置 ====================
 async function loadSettings() {
   try {
     const s = await window.api.invoke('get-settings');
+
     // 关闭按钮行为
     document.querySelectorAll('#closeAction .select-option').forEach(opt => {
       opt.classList.toggle('active', opt.dataset.value === (s.closeAction || 'minimize'));
@@ -275,6 +425,15 @@ async function loadSettings() {
     document.getElementById('autoStart').checked = s.autoStart || false;
     // 隐藏界面启动
     document.getElementById('silentStart').checked = s.silentStart || false;
+    // 主题设置
+    currentTheme = s.theme || 'dark-gold';
+    currentMode = s.mode || 'dark';
+    document.querySelectorAll('.theme-card').forEach(c =>
+      c.classList.toggle('active', c.dataset.id === currentTheme)
+    );
+    document.querySelectorAll('#modeSelect .select-option').forEach(o =>
+      o.classList.toggle('active', o.dataset.value === currentMode)
+    );
   } catch (e) {}
 }
 
@@ -299,7 +458,6 @@ document.getElementById('trayExit').addEventListener('change', function() {
 
 document.getElementById('autoStart').addEventListener('change', function() {
   saveSetting('autoStart', this.checked);
-  // 同时通知主进程设置注册表
   window.api.send('set-auto-start', this.checked);
 });
 
@@ -307,6 +465,21 @@ document.getElementById('silentStart').addEventListener('change', function() {
   saveSetting('silentStart', this.checked);
 });
 
+// 监听来自其他窗口的主题变更
+if (typeof window !== 'undefined' && window.api) {
+  window.api.on('theme-changed', (data) => {
+    currentTheme = data.theme || data.id;
+    currentMode = data.mode;
+    document.querySelectorAll('.theme-card').forEach(c =>
+      c.classList.toggle('active', c.dataset.id === currentTheme)
+    );
+    document.querySelectorAll('#modeSelect .select-option').forEach(o =>
+      o.classList.toggle('active', o.dataset.value === currentMode)
+    );
+  });
+}
+
+renderThemeCards();
 loadSettings();
 </script>
 </body>
