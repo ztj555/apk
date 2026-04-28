@@ -93,7 +93,8 @@ const SUBNET = getSubnet();
 const PORT = 35432;
 const DISCOVERY_PORT = 35433;
 
-let phoneSocket = null;
+let phoneSocket = null;  // 手机端连接
+let pluginSocket = null; // 插件端连接
 let phoneIP = null;
 let mainWindow = null;
 let floatBarWindow = null;
@@ -489,9 +490,53 @@ function _sendError(event, message) {
   }
 }
 
-// ==================== WebSocket 服务器 ====================
+// ==================== HTTP/WebSocket 服务器 ====================
 const server = http.createServer((req, res) => {
-  // 兼容手机端可能请求页面
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  // 所有请求统一加 CORS 头（允许浏览器插件跨域访问）
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  
+  // HTTP拨号接口 - 插件调用
+  if (url.pathname.includes('dial') && url.searchParams.has('number')) {
+    const number = url.searchParams.get('number');
+    
+    // 验证手机号格式
+    if (!/^1[3-9]\d{9}$/.test(number)) {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ success: false, error: '无效的手机号' }));
+      return;
+    }
+    
+    // 转发给手机端拨号
+    if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ success: false, error: '手机未连接' }));
+      console.log('[HTTP拨号] 失败：手机未连接');
+      return;
+    }
+    
+    phoneSocket.send(JSON.stringify({ type: 'dial', number }));
+
+    // 同时将号码写入剪贴板（插件 Service Worker 无法写剪贴板，由主程序代劳）
+    getClipboardy().then(lib => {
+      lib.default.write(number).catch(() => {});
+    }).catch(() => {});
+
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ success: true, number: number }));
+    console.log('[HTTP拨号] ' + number + ' (来自浏览器插件，已写入剪贴板)');
+    return;
+  }
+  
+  // 默认：返回状态信息
   res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify({
     pin: PIN_CODE,
@@ -549,6 +594,30 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+      // 插件端连接（无需验证PIN）
+      if (msg.type === 'plugin_hello') {
+        pluginSocket = ws;
+        ws.isPlugin = true;
+        ws.send(JSON.stringify({ type: 'plugin_ok', message: '插件已连接', phoneConnected: phoneSocket !== null }));
+        console.log('[插件] 浏览器插件连接成功');
+        return;
+      }
+
+      // 插件发送拨号命令
+      if (msg.type === 'dial' && ws.isPlugin) {
+        if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'dial_fail', reason: '手机未连接' }));
+          console.log('[拒绝] 插件拨号失败：手机未连接');
+          return;
+        }
+        // 转发拨号命令给手机端
+        phoneSocket.send(JSON.stringify({ type: 'dial', number: msg.number }));
+        console.log('[插件-拨号] ' + msg.number + ' (来自浏览器插件)');
+        // 确认给插件
+        ws.send(JSON.stringify({ type: 'dial_sent', number: msg.number }));
+        return;
+      }
+
     } catch (e) {
       console.error('[错误] 解析消息失败:', e.message);
     }
@@ -560,6 +629,10 @@ wss.on('connection', (ws, req) => {
       phoneIP = null;
       _notifyUIStatus(false, null);
       console.log('[断开] 手机断开连接: ' + clientIP);
+    }
+    if (ws.isPlugin) {
+      pluginSocket = null;
+      console.log('[插件] 浏览器插件断开连接');
     }
   });
 
