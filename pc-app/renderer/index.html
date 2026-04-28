@@ -170,19 +170,22 @@
   /* ---- 主内容区 ---- */
   .body {
     flex: 1;
-    padding: 12px 14px 8px;
+    padding: 8px 12px 6px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    overflow: hidden;
+    gap: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
+  .body::-webkit-scrollbar { width: 3px; }
+  .body::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
 
   /* 号码输入框 */
   .number-box {
     background: var(--bg2);
     border: 2px solid var(--gold-dark);
     border-radius: 10px;
-    padding: 10px 14px;
+    padding: 8px 12px;
     flex-shrink: 0;
   }
   .number-box:focus-within { border-color: var(--gold); }
@@ -219,21 +222,21 @@
   .dialpad {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 7px;
+    gap: 5px;
     flex-shrink: 0;
   }
   .dial-btn {
     background: var(--bg2);
     border: 1px solid var(--bg3);
-    border-radius: 10px;
-    padding: 10px 0;
+    border-radius: 8px;
+    padding: 7px 0;
     cursor: pointer;
     transition: all 0.12s;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1px;
+    gap: 0px;
   }
   .dial-btn:hover { background: var(--bg3); border-color: var(--gold-dark); }
   .dial-btn:active { transform: scale(0.93); background: rgba(201,168,76,0.1); border-color: var(--gold); }
@@ -242,10 +245,10 @@
   .dial-btn.del .num { font-size: 16px; color: var(--red); }
 
   /* 操作按钮 */
-  .action-row { display: flex; gap: 8px; flex-shrink: 0; }
+  .action-row { display: flex; gap: 6px; flex-shrink: 0; }
   .call-btn {
     flex: 1;
-    padding: 14px;
+    padding: 10px;
     background: linear-gradient(135deg, #27AE60, #1E8449);
     border: none; border-radius: 12px;
     color: white; font-size: 16px; font-weight: 700;
@@ -257,7 +260,7 @@
   .call-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.6; }
   .hangup-btn {
     flex: 1;
-    padding: 14px;
+    padding: 10px;
     background: linear-gradient(135deg, #C0392B, #96281B);
     border: none; border-radius: 12px;
     color: white; font-size: 16px; font-weight: 700;
@@ -337,6 +340,7 @@
   <div class="titlebar">
     <div class="logo"><div class="logo-icon">&#x1F4DE;</div>AutoDial</div>
     <div class="titlebar-btns">
+      <button class="titlebar-btn" id="btnSettings" title="设置"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
       <button class="titlebar-btn" id="btnMinimize" title="最小化"><svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg></button>
       <button class="titlebar-btn close" id="btnClose" title="关闭"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.2"/></svg></button>
     </div>
@@ -418,6 +422,9 @@ let clipboardTimer = null;
 let logOpen = false;
 
 // ==================== 标题栏按钮 ====================
+document.getElementById('btnSettings').addEventListener('click', () => {
+  window.api.send('open-settings');
+});
 document.getElementById('btnMinimize').addEventListener('click', () => {
   window.api.send('window-control', 'minimize');
 });

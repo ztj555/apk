@@ -10,6 +10,32 @@ const fs = require('fs');
 const { exec, execSync } = require('child_process');
 const crypto = require('crypto');
 
+// ==================== 设置管理 ====================
+const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
+const DEFAULT_SETTINGS = {
+  closeAction: 'minimize',   // 'minimize' | 'exit'
+  trayExit: true,            // 托盘右键退出直接退出程序
+  autoStart: false,          // 开机自启动
+  silentStart: false         // 隐藏界面启动
+};
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) };
+    }
+  } catch (e) {}
+  return { ...DEFAULT_SETTINGS };
+}
+
+function saveSettings(settings) {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
+  } catch (e) {}
+}
+
+let appSettings = loadSettings();
+
 // clipboardy 是 ES Module，需要动态导入
 let clipboardy = null;
 async function getClipboardy() {
@@ -98,10 +124,29 @@ let pluginSocket = null; // 插件端连接
 let phoneIP = null;
 let mainWindow = null;
 let floatBarWindow = null;
+let settingsWindow = null;
 let tray = null;
 let floatBarScale = 1.0;
 const FLOATBAR_MIN_SCALE = 0.7;
 const FLOATBAR_MAX_SCALE = 1.5;
+
+// 开机自启动（注册表方式，无需管理员权限）
+function setAutoStart(enable) {
+  const appPath = app.getPath('exe');
+  const regKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+  const regName = 'AutoDial';
+  if (enable) {
+    exec(`reg add "${regKey}" /v "${regName}" /d "${appPath}" /f`, (err) => {
+      if (err) console.error('[自启动] 设置失败:', err.message);
+      else console.log('[自启动] 已开启');
+    });
+  } else {
+    exec(`reg delete "${regKey}" /v "${regName}" /f`, (err) => {
+      if (err) console.error('[自启动] 取消失败:', err.message);
+      else console.log('[自启动] 已关闭');
+    });
+  }
+}
 
 // ==================== 窗口创建 ====================
 
@@ -219,7 +264,7 @@ function createTray() {
     { label: '显示悬浮条', click: () => { if (floatBarWindow) floatBarWindow.show(); } },
     { label: '隐藏悬浮条', click: () => { if (floatBarWindow) floatBarWindow.hide(); } },
     { type: 'separator' },
-    { label: '退出', click: () => { app.isQuitting = true; app.quit(); } }
+    { label: '退出', click: () => { app.isQuitting = true; if (tray) { tray.destroy(); tray = null; } app.quit(); } }
   ]));
 
   tray.on('double-click', () => {
@@ -234,8 +279,8 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 420,
     height: 780,
-    minWidth: 320,
-    minHeight: 520,
+    minWidth: 210,
+    minHeight: 350,
     frame: false,           // 无边框
     transparent: false,
     backgroundColor: '#111318',
@@ -251,30 +296,16 @@ function createMainWindow() {
   mainWindow.setMenuBarVisibility(false);
 
   mainWindow.on('close', (e) => {
-    // 关闭时弹选择：最小化到托盘 or 退出
     if (!app.isQuitting) {
-      e.preventDefault();
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        const { dialog } = require('electron');
-        const choice = dialog.showMessageBoxSync(mainWindow, {
-          type: 'question',
-          buttons: ['最小化到托盘', '退出程序'],
-          title: 'AutoDial',
-          message: '关闭窗口时',
-          defaultId: 0,
-          cancelId: 0,
-          noLink: true
-        });
-        if (choice === 0) {
-          mainWindow.hide();
-          console.log('[托盘] 主窗口已最小化到托盘');
-        } else {
-          app.isQuitting = true;
-          if (floatBarWindow && !floatBarWindow.isDestroyed()) floatBarWindow.close();
-          mainWindow.close();
-          app.quit();
-        }
+      if (appSettings.closeAction === 'exit') {
+        // 用户设置关闭即退出
+        if (tray) { tray.destroy(); tray = null; }
+        return; // 允许关闭
       }
+      // 默认：最小化到托盘
+      e.preventDefault();
+      mainWindow.hide();
+      console.log('[托盘] 主窗口已最小化到托盘');
     }
   });
 
@@ -340,6 +371,59 @@ function createFloatBarWindow() {
 }
 
 // ==================== IPC 处理 ====================
+
+// 获取设置
+ipcMain.handle('get-settings', async () => {
+  return appSettings;
+});
+
+// 保存单个设置项
+ipcMain.on('save-setting', (event, { key, value }) => {
+  appSettings[key] = value;
+  saveSettings(appSettings);
+  console.log('[设置] ' + key + ' = ' + value);
+});
+
+// 开机自启动
+ipcMain.on('set-auto-start', (event, enable) => {
+  setAutoStart(enable);
+});
+
+// 打开设置窗口
+ipcMain.on('open-settings', () => {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.show();
+    settingsWindow.focus();
+    return;
+  }
+  settingsWindow = new BrowserWindow({
+    width: 380,
+    height: 420,
+    minWidth: 320,
+    minHeight: 350,
+    frame: false,
+    transparent: false,
+    backgroundColor: '#111318',
+    resizable: true,
+    modal: true,
+    parent: mainWindow,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  settingsWindow.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
+  settingsWindow.setMenuBarVisibility(false);
+  settingsWindow.on('closed', () => { settingsWindow = null; });
+});
+
+// 关闭设置窗口
+ipcMain.on('close-settings', () => {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.close();
+  }
+});
 
 // 获取服务器信息
 ipcMain.handle('get-info', async () => {
@@ -738,12 +822,25 @@ app.whenReady().then(() => {
     createTray();
     createMainWindow();
     createFloatBarWindow();
+
+    // 隐藏界面启动：启动后立即隐藏主窗口
+    if (appSettings.silentStart) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.hide();
+        console.log('[启动] 隐藏界面启动模式');
+      }
+    }
+
+    // 同步开机自启动状态
+    if (appSettings.autoStart) {
+      setAutoStart(true);
+    }
   });
 });
 
 app.on('window-all-closed', () => {
-  // 有托盘时，关闭所有窗口不退出
-  if (tray) return;
+  // 有托盘且未标记退出，保持程序运行
+  if (tray && !app.isQuitting) return;
   app.quit();
 });
 

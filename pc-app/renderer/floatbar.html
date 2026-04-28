@@ -198,7 +198,7 @@
   <div class="float-bar" id="floatBar">
     <div class="fb-dot" id="fbDot"></div>
     <div class="fb-sep"></div>
-    <button class="fb-scan-btn" id="fbScanBtn">读取</button>
+    <button class="fb-scan-btn" id="fbScanBtn">清空</button>
     <input type="text" class="fb-input" id="fbInput" placeholder="复制号码..." readonly>
     <div class="fb-sep"></div>
     <button class="fb-dial-btn" id="fbDialBtn" disabled>&#x1F4DE; 拨打</button>
@@ -283,7 +283,7 @@ window.api.on('floatbar-scale-changed', (scale) => {
 })();
 
 // ==================== 按钮 ====================
-document.getElementById('fbScanBtn').addEventListener('click', scanClipboard);
+document.getElementById('fbScanBtn').addEventListener('click', clearNumber);
 document.getElementById('fbDialBtn').addEventListener('click', dialFromFloat);
 document.getElementById('fbHangupBtn').addEventListener('click', hangupFromFloat);
 
@@ -393,36 +393,13 @@ function pollClipboard() {
 
 pollClipboard();
 
-// ==================== 手动读取按钮 ====================
-async function scanClipboard() {
-  const btn = document.getElementById('fbScanBtn');
-  btn.classList.add('scanning');
-  btn.textContent = '读取中';
-
-  try {
-    const d = await window.api.invoke('read-clipboard');
-    if (d.text) {
-      lastClipboard = d.text;
-      const phone = extractPhone(d.text);
-      const fbInput = document.getElementById('fbInput');
-      const fbDialBtn = document.getElementById('fbDialBtn');
-      if (phone) {
-        fbInput.value = phone;
-        fbDialBtn.disabled = !isConnected;
-        showToast('读取到: ' + phone, 'success');
-      } else {
-        showToast('剪贴板无有效号码', 'error');
-        fbInput.value = d.text.substring(0, 20);
-      }
-    } else {
-      showToast('剪贴板为空', 'error');
-    }
-  } catch (err) {
-    showToast('读取失败', 'error');
-  } finally {
-    btn.classList.remove('scanning');
-    btn.textContent = '读取';
-  }
+// ==================== 清空按钮 ====================
+function clearNumber() {
+  const fbInput = document.getElementById('fbInput');
+  const fbDialBtn = document.getElementById('fbDialBtn');
+  fbInput.value = '';
+  fbDialBtn.disabled = true;
+  showToast('已清空', 'success');
 }
 
 function dialFromFloat() {

@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoDial 设置</title>
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #F0C040;
+    --gold-dark: #8B6914;
+    --bg: #111318;
+    --bg2: #1A1D24;
+    --bg3: #22262F;
+    --text: #E8DCC8;
+    --text2: #A09070;
+    --green: #2ECC71;
+    --red: #E74C3C;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  .wrap {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 标题栏 */
+  .titlebar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--gold-dark);
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+    height: 36px;
+    padding: 0 14px;
+  }
+  .titlebar .logo {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gold-light);
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .titlebar-btns {
+    display: flex;
+    margin-left: auto;
+    height: 100%;
+    -webkit-app-region: no-drag;
+  }
+  .titlebar-btn {
+    width: 46px; height: 36px;
+    background: none; border: none;
+    color: var(--text2);
+    font-size: 10px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s;
+  }
+  .titlebar-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+
+  /* 内容 */
+  .content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .content::-webkit-scrollbar { width: 3px; }
+  .content::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+
+  .section-title {
+    font-size: 11px;
+    color: var(--text2);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--bg3);
+  }
+
+  .setting-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: var(--bg2);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border: 1px solid var(--bg3);
+    transition: border-color 0.2s;
+  }
+  .setting-item:hover { border-color: var(--gold-dark); }
+
+  .setting-info {
+    flex: 1;
+  }
+  .setting-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .setting-desc {
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.4;
+  }
+
+  /* 开关 */
+  .switch {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-left: 16px;
+  }
+  .switch input { display: none; }
+  .switch .sw-track {
+    width: 36px; height: 18px;
+    background: var(--bg);
+    border-radius: 9px;
+    position: relative;
+    transition: background 0.2s;
+    border: 1px solid var(--text2);
+  }
+  .switch .sw-track::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--text2);
+    transition: all 0.2s;
+  }
+  .switch input:checked + .sw-track {
+    background: var(--gold-dark);
+    border-color: var(--gold);
+  }
+  .switch input:checked + .sw-track::after {
+    left: 20px;
+    background: var(--gold-light);
+  }
+
+  /* 选择框 */
+  .select-group {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-left: 16px;
+  }
+  .select-option {
+    padding: 5px 12px;
+    background: var(--bg);
+    border: 1px solid var(--bg3);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .select-option:hover { border-color: var(--gold-dark); color: var(--text); }
+  .select-option.active {
+    background: var(--gold-dark);
+    border-color: var(--gold);
+    color: var(--gold-light);
+    font-weight: 600;
+  }
+
+  .spacer { height: 16px; }
+
+  .footer {
+    text-align: center;
+    padding: 12px;
+    font-size: 10px;
+    color: #444;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="titlebar">
+    <div class="logo">&#x2699; 设置</div>
+    <div class="titlebar-btns">
+      <button class="titlebar-btn" id="btnClose">
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/>
+          <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-title">窗口行为</div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">关闭按钮行为</div>
+        <div class="setting-desc">点击标题栏 X 时执行的操作</div>
+      </div>
+      <div class="select-group" id="closeAction">
+        <div class="select-option active" data-value="minimize">最小化</div>
+        <div class="select-option" data-value="exit">退出</div>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">托盘图标退出</div>
+        <div class="setting-desc">关闭窗口后，托盘右键退出时直接退出程序（不需要二次退出）</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="trayExit" checked>
+        <span class="sw-track"></span>
+      </label>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="section-title">启动</div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">开机自启动</div>
+        <div class="setting-desc">Windows 启动时自动运行 AutoDial</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="autoStart">
+        <span class="sw-track"></span>
+      </label>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">隐藏界面启动</div>
+        <div class="setting-desc">开机自启动时不显示主窗口，仅托盘运行</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="silentStart">
+        <span class="sw-track"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="footer">AutoDial v3.0</div>
+</div>
+
+<script>
+document.getElementById('btnClose').addEventListener('click', () => {
+  window.api.send('close-settings');
+});
+
+// ==================== 加载设置 ====================
+async function loadSettings() {
+  try {
+    const s = await window.api.invoke('get-settings');
+    // 关闭按钮行为
+    document.querySelectorAll('#closeAction .select-option').forEach(opt => {
+      opt.classList.toggle('active', opt.dataset.value === (s.closeAction || 'minimize'));
+    });
+    // 托盘退出
+    document.getElementById('trayExit').checked = s.trayExit !== false;
+    // 开机自启动
+    document.getElementById('autoStart').checked = s.autoStart || false;
+    // 隐藏界面启动
+    document.getElementById('silentStart').checked = s.silentStart || false;
+  } catch (e) {}
+}
+
+// ==================== 保存设置 ====================
+function saveSetting(key, value) {
+  window.api.send('save-setting', { key, value });
+}
+
+// ==================== 关闭行为选择 ====================
+document.querySelectorAll('#closeAction .select-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('#closeAction .select-option').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+    saveSetting('closeAction', opt.dataset.value);
+  });
+});
+
+// ==================== 开关 ====================
+document.getElementById('trayExit').addEventListener('change', function() {
+  saveSetting('trayExit', this.checked);
+});
+
+document.getElementById('autoStart').addEventListener('change', function() {
+  saveSetting('autoStart', this.checked);
+  // 同时通知主进程设置注册表
+  window.api.send('set-auto-start', this.checked);
+});
+
+document.getElementById('silentStart').addEventListener('change', function() {
+  saveSetting('silentStart', this.checked);
+});
+
+loadSettings();
+</script>
+</body>
+</html>
