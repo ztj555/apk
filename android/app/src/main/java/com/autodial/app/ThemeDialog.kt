@@ -195,7 +195,7 @@ class ThemeDialog(private val activity: Activity) : BottomSheetDialog(activity) 
                 }
                 setBackgroundColor(Color.parseColor(c))
                 background = GradientDrawable().apply {
-                    cornerRadius = (4 * dp).toInt()
+                    cornerRadius = 4 * dp
                 }
             }
             preview.addView(swatch)
@@ -217,7 +217,7 @@ class ThemeDialog(private val activity: Activity) : BottomSheetDialog(activity) 
 
     private fun highlightCard(card: View, colors: ThemeColors, dp: Float) {
         card.background = GradientDrawable().apply {
-            cornerRadius = (8 * dp).toInt()
+            cornerRadius = 8 * dp
             setColor(Color.parseColor(colors.bg2))
             setStroke((2 * dp).toInt(), Color.parseColor(colors.gold))
         }
@@ -231,7 +231,7 @@ class ThemeDialog(private val activity: Activity) : BottomSheetDialog(activity) 
             setTextColor(Color.parseColor(colors.text2))
             setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
             background = GradientDrawable().apply {
-                cornerRadius = (8 * dp).toInt()
+                cornerRadius = 8 * dp
                 setColor(Color.parseColor(colors.bg2))
             }
         }
@@ -241,7 +241,7 @@ class ThemeDialog(private val activity: Activity) : BottomSheetDialog(activity) 
         btn.setTextColor(Color.parseColor(colors.bg))
         btn.setTypeface(null, android.graphics.Typeface.BOLD)
         btn.background = GradientDrawable().apply {
-            cornerRadius = (8 * dp).toInt()
+            cornerRadius = 8 * dp
             setColor(Color.parseColor(colors.gold))
         }
     }
