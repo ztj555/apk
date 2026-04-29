@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoDial 发短信</title>
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #F0C040;
+    --gold-dark: #8B6914;
+    --bg: #111318;
+    --bg2: #1A1D24;
+    --bg3: #22262F;
+    --text: #E8DCC8;
+    --text2: #A09070;
+    --green: #2ECC71;
+    --red: #E74C3C;
+    --radius-sm: 5px;
+    --radius-md: 10px;
+    --radius-lg: 24px;
+    --shadow: none;
+    --font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    --gradient-green: linear-gradient(135deg, #27AE60, #1E8449);
+    --gradient-red: linear-gradient(135deg, #C0392B, #96281B);
+    --glow-text: none;
+    --floatbar-bg: rgba(26, 29, 36, 0.72);
+    --floatbar-border: rgba(201, 168, 76, 0.25);
+    --floatbar-blur: blur(20px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-family);
+    overflow: hidden;
+    user-select: none;
+  }
+  .wrap {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 标题栏 */
+  .titlebar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--gold-dark);
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+    height: 36px;
+  }
+  .titlebar .logo {
+    padding-left: 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gold-light);
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .titlebar-btns {
+    display: flex;
+    margin-left: auto;
+    height: 100%;
+    -webkit-app-region: no-drag;
+  }
+  .titlebar-btn {
+    width: 46px; height: 36px;
+    background: none; border: none;
+    color: var(--text2);
+    font-size: 10px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s;
+    -webkit-app-region: no-drag;
+  }
+  .titlebar-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+  .titlebar-btn.close:hover { background: #C42B1C; color: white; }
+
+  /* 主体 */
+  .body {
+    flex: 1;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+  }
+  .body::-webkit-scrollbar { width: 3px; }
+  .body::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+
+  /* 收件人区域 */
+  .field-label {
+    font-size: 11px;
+    color: var(--text2);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .recipient-box {
+    background: var(--bg2);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .recipient-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .recipient-number {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--gold-light);
+    letter-spacing: 2px;
+    flex: 1;
+  }
+
+  /* 短信内容 */
+  .sms-content {
+    flex: 1;
+    background: var(--bg2);
+    border: 2px solid var(--gold-dark);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    font-size: 15px;
+    color: var(--text);
+    font-family: var(--font-family);
+    resize: none;
+    outline: none;
+    line-height: 1.6;
+    min-height: 120px;
+    transition: border-color 0.2s;
+  }
+  .sms-content:focus { border-color: var(--gold); }
+  .sms-content::placeholder { color: var(--text2); font-size: 13px; }
+
+  /* 字数统计 */
+  .char-count {
+    font-size: 11px;
+    color: var(--text2);
+    text-align: right;
+    margin-top: -6px;
+  }
+  .char-count.warn { color: var(--red); }
+
+  /* 发送按钮 */
+  .send-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #C9A84C, #8B6914);
+    border: none;
+    border-radius: var(--radius-md);
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .send-btn:hover { filter: brightness(1.15); box-shadow: 0 6px 18px rgba(201,168,76,0.35); }
+  .send-btn:active { transform: scale(0.97); }
+  .send-btn:disabled {
+    background: var(--bg3);
+    color: var(--red);
+    cursor: default;
+    opacity: 0.7;
+    font-size: 14px;
+  }
+  .send-btn.sending {
+    background: var(--bg3);
+    color: var(--text2);
+    cursor: wait;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 12px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--bg3); border: 1px solid var(--gold-dark);
+    border-radius: var(--radius-md); padding: 8px 18px;
+    font-size: 12px; color: var(--text);
+    transition: transform 0.25s; z-index: 999; white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
+</style>
+<script src="../themes/theme-data.js"></script>
+<script src="js/theme.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <!-- 标题栏 -->
+  <div class="titlebar">
+    <div class="logo">&#x1F4AC; 发短信</div>
+    <div class="titlebar-btns">
+      <button class="titlebar-btn" id="btnMinimize" title="最小化"><svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg></button>
+      <button class="titlebar-btn close" id="btnClose" title="关闭"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- 收件人 -->
+    <div class="field-label">&#x1F4E6; 收件人</div>
+    <div class="recipient-box">
+      <span class="recipient-icon">&#x1F4F1;</span>
+      <span class="recipient-number" id="recipientNumber">--</span>
+    </div>
+
+    <!-- 短信内容 -->
+    <div class="field-label">&#x270D;&#xFE0F; 短信内容</div>
+    <textarea class="sms-content" id="smsContent" placeholder="请输入短信内容..." maxlength="500"></textarea>
+    <div class="char-count" id="charCount">0 / 500</div>
+
+    <!-- 发送按钮 -->
+    <button class="send-btn" id="sendBtn" disabled>&#x1F4E8; 请输入内容</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* window.api 通过 preload.js contextBridge 注入 */
+
+let currentNumber = '';
+let isSending = false;
+
+// ==================== 标题栏 ====================
+document.getElementById('btnMinimize').addEventListener('click', () => {
+  window.api.send('window-control', 'minimize');
+});
+document.getElementById('btnClose').addEventListener('click', () => {
+  // 关闭短信窗口 - 用 BrowserWindow.close()
+  window.close();
+});
+
+// ==================== 接收号码 ====================
+window.api.on('sms-number', (number) => {
+  currentNumber = number || '--';
+  document.getElementById('recipientNumber').textContent = currentNumber;
+  updateSendBtn();
+});
+
+// ==================== 短信内容输入 ====================
+const smsContent = document.getElementById('smsContent');
+const charCount = document.getElementById('charCount');
+const sendBtn = document.getElementById('sendBtn');
+
+smsContent.addEventListener('input', () => {
+  const len = smsContent.value.length;
+  charCount.textContent = len + ' / 500';
+  charCount.className = 'char-count' + (len > 450 ? ' warn' : '');
+  updateSendBtn();
+});
+
+function updateSendBtn() {
+  if (isSending) return;
+  const hasContent = smsContent.value.trim().length > 0;
+  const hasNumber = currentNumber && currentNumber !== '--';
+  sendBtn.disabled = !(hasContent && hasNumber);
+  if (sendBtn.disabled) {
+    sendBtn.textContent = !hasNumber ? '\uD83D\uDCF1 \u8BF7\u8FDE\u63A5\u624B\u673A' : '\u270D\uFE0F \u8BF7\u8F93\u5165\u5185\u5BB9';
+  } else {
+    sendBtn.innerHTML = '\uD83D\uDCE8 \u53D1\u9001';
+  }
+}
+
+// ==================== 发送 ====================
+sendBtn.addEventListener('click', () => {
+  const content = smsContent.value.trim();
+  if (!content || !currentNumber || currentNumber === '--') return;
+
+  isSending = true;
+  sendBtn.disabled = true;
+  sendBtn.className = 'send-btn sending';
+  sendBtn.innerHTML = '<span>&#x23F3;</span> \u7B49\u5F85\u624B\u673A\u786E\u8BA4...';
+
+  window.api.send('send-sms', { number: currentNumber, content: content });
+  showToast('\u5DF2\u53D1\u9001\u5230\u624B\u673A\uFF0C\u7B49\u5F85\u786E\u8BA4...');
+});
+
+// ==================== 监听短信结果 ====================
+window.api.on('sms-result', (data) => {
+  isSending = false;
+  const btn = document.getElementById('sendBtn');
+  btn.className = 'send-btn';
+
+  if (data.status === 'sent') {
+    showToast('\u2705 \u77ED\u4FE1\u53D1\u9001\u6210\u529F', 'success');
+    btn.innerHTML = '&#x2705; \u53D1\u9001\u6210\u529F';
+    btn.disabled = true;
+    // 2秒后重置
+    setTimeout(() => {
+      smsContent.value = '';
+      charCount.textContent = '0 / 500';
+      updateSendBtn();
+    }, 2000);
+  } else if (data.status === 'cancelled') {
+    showToast('\u274C \u7528\u6237\u53D6\u6D88', 'error');
+    updateSendBtn();
+  } else {
+    showToast('\u274C \u53D1\u9001\u5931\u8D25', 'error');
+    updateSendBtn();
+  }
+});
+
+// ==================== Toast ====================
+let toastTimer = null;
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 2500);
+}
+
+// ==================== 快捷键 ====================
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.ctrlKey) {
+    if (!sendBtn.disabled) sendBtn.click();
+  }
+  if (e.key === 'Escape') {
+    window.close();
+  }
+});
+
+// 初始化主题
+if (typeof ThemeEngine !== 'undefined') ThemeEngine.initTheme();
+</script>
+</body>
+</html>

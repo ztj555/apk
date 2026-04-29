@@ -24,6 +24,9 @@
     --gradient-green: linear-gradient(135deg, #27AE60, #1E8449);
     --gradient-red: linear-gradient(135deg, #C0392B, #96281B);
     --glow-text: none;
+    --floatbar-bg: rgba(26, 29, 36, 0.72);
+    --floatbar-border: rgba(201, 168, 76, 0.25);
+    --floatbar-blur: blur(20px);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -39,18 +42,31 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background: var(--bg2);
-    border: 1px solid var(--gold-dark);
+    background: var(--floatbar-bg);
+    border: 1px solid var(--floatbar-border);
     border-radius: var(--radius-lg);
     padding: 0 6px 0 8px;
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.06);
+    backdrop-filter: var(--floatbar-blur);
+    -webkit-backdrop-filter: var(--floatbar-blur);
     cursor: move;
     user-select: none;
-    transition: box-shadow 0.2s;
+    transition: box-shadow 0.2s, border-color 0.2s;
     position: relative;
+    -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 70%, transparent 100%);
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 70%, transparent 100%);
   }
-  .float-bar:hover { border-color: var(--gold); box-shadow: 0 4px 30px rgba(201,168,76,0.15); }
-  .float-bar.dragging { box-shadow: 0 8px 32px rgba(0,0,0,0.7); opacity: 0.9; }
+  .float-bar:hover {
+    border-color: var(--gold);
+    box-shadow: var(--shadow), 0 4px 30px rgba(201,168,76,0.12), inset 0 1px 0 rgba(255,255,255,0.1);
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .float-bar.dragging {
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5); opacity: 0.92;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
   .fb-dot {
     width: 8px; height: 8px;
     border-radius: 50%;
@@ -66,13 +82,13 @@
   @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
   .fb-sep {
     width: 1px; height: 20px;
-    background: var(--bg3);
+    background: rgba(255,255,255,0.08);
     flex-shrink: 0;
     margin: 0 2px;
   }
   .fb-scan-btn {
-    background: var(--bg);
-    border: 1px solid var(--gold-dark);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: var(--radius-md);
     padding: 3px 8px;
     color: var(--gold-light);
@@ -82,12 +98,12 @@
     transition: all 0.15s;
     flex-shrink: 0;
   }
-  .fb-scan-btn:hover { background: var(--bg3); border-color: var(--gold); }
+  .fb-scan-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--gold); }
   .fb-scan-btn:active { transform: scale(0.95); }
   .fb-scan-btn.scanning { pointer-events: none; opacity: 0.6; }
   .fb-input {
-    background: var(--bg);
-    border: 1px solid var(--bg3);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: var(--radius-md);
     padding: 3px 8px;
     color: var(--text);
@@ -113,7 +129,7 @@
     display: flex; align-items: center; gap: 3px;
   }
   .fb-dial-btn:hover:not(:disabled) { filter: brightness(1.15); }
-  .fb-dial-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.5; }
+  .fb-dial-btn:disabled { background: var(--bg3); color: var(--red); cursor: default; opacity: 0.7; font-size: 10px; }
   .fb-hangup-btn {
     background: var(--gradient-red);
     border: none; border-radius: var(--radius-md);
@@ -125,7 +141,7 @@
     display: flex; align-items: center; gap: 3px;
   }
   .fb-hangup-btn:hover:not(:disabled) { filter: brightness(1.15); }
-  .fb-hangup-btn:disabled { background: var(--bg3); color: var(--text2); cursor: not-allowed; opacity: 0.5; }
+  .fb-hangup-btn:disabled { background: var(--bg3); color: var(--red); cursor: default; opacity: 0.7; font-size: 10px; }
   /* 缩放手柄 - 右下角小三角 */
   .fb-resize-handle {
     position: absolute;
@@ -134,6 +150,7 @@
     cursor: nwse-resize;
     z-index: 10;
     opacity: 0;
+    pointer-events: none;
     transition: opacity 0.2s;
   }
   .fb-resize-handle::before,
@@ -153,15 +170,18 @@
     bottom: 3px; right: 3px;
     opacity: 0.8;
   }
-  .float-bar:hover .fb-resize-handle { opacity: 1; }
+  .float-bar:hover .fb-resize-handle { opacity: 1; pointer-events: auto; }
   .toast {
     position: fixed; top: -8px; left: 50%;
     transform: translateX(-50%) translateY(-40px);
-    background: var(--bg3); border: 1px solid var(--gold-dark);
+    background: var(--floatbar-bg);
+    border: 1px solid var(--floatbar-border);
     border-radius: var(--radius-md); padding: 6px 14px;
     font-size: 11px; color: var(--text);
     transition: transform 0.25s; z-index: 999; white-space: nowrap;
     pointer-events: none;
+    backdrop-filter: var(--floatbar-blur);
+    -webkit-backdrop-filter: var(--floatbar-blur);
   }
   /* 缩放内容层 - 实际内容通过 transform scale 缩放 */
   .fb-content {
@@ -173,10 +193,12 @@
   .fb-context-menu {
     position: fixed;
     min-width: 140px;
-    background: var(--bg2);
-    border: 1px solid var(--gold-dark);
+    background: var(--floatbar-bg);
+    border: 1px solid var(--floatbar-border);
     border-radius: var(--radius-md);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+    backdrop-filter: var(--floatbar-blur);
+    -webkit-backdrop-filter: var(--floatbar-blur);
     z-index: 100;
     display: none;
   }
@@ -294,6 +316,35 @@ window.api.on('floatbar-scale-changed', (scale) => {
     bar.classList.remove('dragging');
   }
 })();
+
+// ==================== 按钮状态文字 ====================
+// 拨打按钮：disabled 时显示原因文字，enabled 时恢复正常
+function updateDialBtnText() {
+  const btn = document.getElementById('fbDialBtn');
+  if (btn.disabled) {
+    btn.textContent = isConnected ? '\uD83D\uDD0D 请输入号码' : '\uD83D\uDCF1 请连接手机';
+  } else {
+    btn.innerHTML = '\uD83D\uDCDE 拨打';
+  }
+}
+// 挂断按钮：disabled 时显示提示，enabled 时恢复正常
+function updateHangupBtnText() {
+  const btn = document.getElementById('fbHangupBtn');
+  if (btn.disabled) {
+    btn.textContent = '\uD83D\uDCF1 请连接手机';
+  } else {
+    btn.innerHTML = '\uD83D\uDD0E 挂断';
+  }
+}
+
+// 监听拨号按钮 disabled 变化
+const dialBtn = document.getElementById('fbDialBtn');
+const hangupBtn = document.getElementById('fbHangupBtn');
+new MutationObserver(updateDialBtnText).observe(dialBtn, { attributes: true, attributeFilter: ['disabled'] });
+new MutationObserver(updateHangupBtnText).observe(hangupBtn, { attributes: true, attributeFilter: ['disabled'] });
+// 初始化
+updateDialBtnText();
+updateHangupBtnText();
 
 // ==================== 按钮 ====================
 document.getElementById('fbScanBtn').addEventListener('click', clearNumber);

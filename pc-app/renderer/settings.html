@@ -24,6 +24,9 @@
     --gradient-green: linear-gradient(135deg, #27AE60, #1E8449);
     --gradient-red: linear-gradient(135deg, #C0392B, #96281B);
     --glow-text: none;
+    --floatbar-bg: rgba(26, 29, 36, 0.72);
+    --floatbar-border: rgba(201, 168, 76, 0.25);
+    --floatbar-blur: blur(20px);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -169,19 +172,22 @@
   /* 选择框 */
   .select-group {
     display: flex;
-    gap: 6px;
+    gap: 5px;
     flex-shrink: 0;
     margin-left: 16px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .select-option {
-    padding: 5px 12px;
+    padding: 4px 10px;
     background: var(--bg);
     border: 1px solid var(--bg3);
     border-radius: var(--radius-sm);
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text2);
     cursor: pointer;
     transition: all 0.15s;
+    white-space: nowrap;
   }
   .select-option:hover { border-color: var(--gold-dark); color: var(--text); }
   .select-option.active {
@@ -244,6 +250,8 @@
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--bg3);
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .mode-row .setting-label {
     font-size: 12px;
@@ -288,8 +296,13 @@
       <div class="mode-row">
         <div class="setting-label">显示模式</div>
         <div class="select-group" id="modeSelect">
-          <div class="select-option active" data-value="dark">&#x1F319; 暗色</div>
-          <div class="select-option" data-value="light">&#x2600; 亮色</div>
+          <div class="select-option active" data-value="dark">&#x1F311; 暗夜</div>
+          <div class="select-option" data-value="dusk">&#x1F306; 黄昏</div>
+          <div class="select-option" data-value="dawn">&#x1F305; 朝阳</div>
+          <div class="select-option" data-value="twilight">&#x1F307; 暮光</div>
+          <div class="select-option" data-value="warm">&#x1F324; 暖光</div>
+          <div class="select-option" data-value="mist">&#x1F325; 晨雾</div>
+          <div class="select-option" data-value="light">&#x2600; 亮白</div>
         </div>
       </div>
     </div>
@@ -428,6 +441,12 @@ async function loadSettings() {
     // 主题设置
     currentTheme = s.theme || 'dark-gold';
     currentMode = s.mode || 'dark';
+    // 兼容旧版模式名称
+    const modeCompat = { 'auto': 'dawn' };
+    if (modeCompat[currentMode]) {
+      currentMode = modeCompat[currentMode];
+      saveSetting('mode', currentMode);
+    }
     document.querySelectorAll('.theme-card').forEach(c =>
       c.classList.toggle('active', c.dataset.id === currentTheme)
     );

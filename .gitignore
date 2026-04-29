@@ -13,5 +13,8 @@ android/build
 android/.gradle
 node_modules/
 output/
+pc-app/output/
+pc-app/node_modules/
 *.zip
 *.log
+*.bat

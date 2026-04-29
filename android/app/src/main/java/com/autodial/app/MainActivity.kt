@@ -56,6 +56,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 监听 DialService 的短信请求广播，启动 SmsConfirmActivity
+    private val smsConfirmReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val number = intent?.getStringExtra("number") ?: return
+            val content = intent?.getStringExtra("content") ?: ""
+            startActivity(Intent(this@MainActivity, SmsConfirmActivity::class.java).apply {
+                putExtra("number", number)
+                putExtra("content", content)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -89,6 +102,12 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.RECEIVER_EXPORTED
         )
 
+        // 注册短信确认广播
+        ContextCompat.registerReceiver(this, smsConfirmReceiver,
+            IntentFilter(DialService.ACTION_SHOW_SMS_CONFIRM),
+            ContextCompat.RECEIVER_EXPORTED
+        )
+
         // 启动后台服务
         startService(DialService.newIntent(this))
 
@@ -100,6 +119,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         try { unregisterReceiver(connectionReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(simSelectReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(smsConfirmReceiver) } catch (_: Exception) {}
     }
 
     /**
@@ -149,7 +169,8 @@ class MainActivity : AppCompatActivity() {
         val perms = mutableListOf(
             Manifest.permission.CALL_PHONE,
             Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.READ_CALL_LOG
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.SEND_SMS
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             perms.add(Manifest.permission.ANSWER_PHONE_CALLS)

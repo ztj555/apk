@@ -1,6 +1,7 @@
 /**
  * AutoDial PC端 - 主题引擎
  * 负责 CSS 变量注入、主题应用、跨窗口同步
+ * 支持 dark / dusk / dawn / twilight / warm / mist / light 七种亮度模式
  */
 
 (function() {
@@ -28,7 +29,8 @@
     gold: 'gold', goldLight: 'gold-light', goldDark: 'gold-dark',
     bg: 'bg', bg2: 'bg2', bg3: 'bg3',
     text: 'text', text2: 'text2',
-    green: 'green', red: 'red'
+    green: 'green', red: 'red',
+    floatbarBg: 'floatbar-bg', floatbarBorder: 'floatbar-border', floatbarBlur: 'floatbar-blur'
   };
 
   const STYLE_MAP = {
@@ -44,9 +46,10 @@
     currentMode = mode || currentMode;
 
     const theme = findTheme(currentThemeId);
+    // 优先使用指定模式，没有则回退
     const colors = theme[currentMode] || theme.dark;
 
-    // 注入颜色变量
+    // 注入颜色变量（含 floatbar 相关）
     const colorVars = {};
     for (const [jsKey, cssName] of Object.entries(COLOR_MAP)) {
       if (colors[jsKey] !== undefined) {
@@ -60,16 +63,7 @@
       setCSSVars(theme.style);
     }
 
-    // 毛玻璃主题特殊处理：给body加backdrop-filter
-    if (theme.id === 'glassmorphism' && theme.style.backdropFilter) {
-      document.body.style.backdropFilter = theme.style.backdropFilter;
-      document.body.style.webkitBackdropFilter = theme.style.backdropFilter;
-    } else {
-      document.body.style.backdropFilter = '';
-      document.body.style.webkitBackdropFilter = '';
-    }
-
-    // 赛博朋克主题：发光文字效果
+    // 发光文字效果
     if (theme.style.glowText && theme.style.glowText !== 'none') {
       const root = document.documentElement;
       root.style.setProperty('--glow-text', theme.style.glowText);
@@ -112,7 +106,7 @@
     };
   }
 
-  // 暴露到全局（供 settings.html 的主题选择器使用）
+  // 暴露到全局
   window.ThemeEngine = {
     applyTheme,
     initTheme,

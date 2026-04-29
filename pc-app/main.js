@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS = {
   autoStart: false,          // 开机自启动
   silentStart: false,        // 隐藏界面启动
   theme: 'dark-gold',        // 主题ID
-  mode: 'dark'               // 显示模式 dark/light
+  mode: 'dark'               // 显示模式 dark/dusk/dawn/twilight/warm/mist/light
 };
 
 function loadSettings() {
@@ -120,6 +120,7 @@ let phoneIP = null;
 let mainWindow = null;
 let floatBarWindow = null;
 let settingsWindow = null;
+let smsWindow = null;
 let tray = null;
 let floatBarScale = 1.0;
 const FLOATBAR_MIN_SCALE = 0.7;
@@ -390,7 +391,7 @@ ipcMain.on('change-theme', (event, data) => {
   saveSettings(appSettings);
   console.log('[主题] ' + appSettings.theme + ' / ' + appSettings.mode);
   // 广播给所有窗口
-  [mainWindow, floatBarWindow, settingsWindow].forEach(win => {
+  [mainWindow, floatBarWindow, settingsWindow, smsWindow].forEach(win => {
     if (win && !win.isDestroyed()) {
       try { win.webContents.send('theme-changed', { theme: appSettings.theme, mode: appSettings.mode }); } catch (e) {}
     }
@@ -516,6 +517,53 @@ ipcMain.on('hangup', (event) => {
     if (win && !win.isDestroyed()) {
       try { win.webContents.send('hangup-sent'); } catch (e) {}
     }
+  });
+});
+
+// 发送短信指令
+ipcMain.on('send-sms', (event, data) => {
+  if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+    _sendError(event, '手机未连接');
+    return;
+  }
+  phoneSocket.send(JSON.stringify({ type: 'sms', number: data.number, content: data.content }));
+  console.log('[短信] 发送短信请求: ' + data.number + ', 内容长度=' + data.content.length);
+});
+
+// 打开短信编辑窗口
+ipcMain.on('open-sms', (event, number) => {
+  if (smsWindow && !smsWindow.isDestroyed()) {
+    smsWindow.show();
+    smsWindow.focus();
+    // 传号码给短信窗口
+    try { smsWindow.webContents.send('sms-number', number); } catch (e) {}
+    return;
+  }
+  smsWindow = new BrowserWindow({
+    width: 400,
+    height: 500,
+    minWidth: 320,
+    minHeight: 400,
+    frame: false,
+    transparent: false,
+    backgroundColor: '#111318',
+    resizable: true,
+    modal: false,
+    parent: mainWindow,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  smsWindow.loadFile(path.join(__dirname, 'renderer', 'sms.html'));
+  smsWindow.setMenuBarVisibility(false);
+  smsWindow.on('closed', () => { smsWindow = null; });
+  smsWindow.webContents.on('did-finish-load', () => {
+    try {
+      smsWindow.webContents.send('theme-changed', { theme: appSettings.theme, mode: appSettings.mode });
+      smsWindow.webContents.send('sms-number', number);
+    } catch (e) {}
   });
 });
 
@@ -700,6 +748,17 @@ wss.on('connection', (ws, req) => {
         [mainWindow, floatBarWindow].forEach(win => {
           if (win && !win.isDestroyed()) {
             try { win.webContents.send('dial-result', msg); } catch (e) {}
+          }
+        });
+        return;
+      }
+
+      // 手机回报短信发送结果
+      if (msg.type === 'sms_result') {
+        console.log('[短信结果] ' + msg.number + ': ' + msg.status);
+        [mainWindow, floatBarWindow, smsWindow].forEach(win => {
+          if (win && !win.isDestroyed()) {
+            try { win.webContents.send('sms-result', msg); } catch (e) {}
           }
         });
         return;

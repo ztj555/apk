@@ -20,4 +20,12 @@
         <item name="bottomSheetStyle">@style/Widget.Design.BottomSheet.Modal</item>
         <item name="android:windowBackground">@android:color/transparent</item>
     </style>
+    <!-- 短信确认界面透明主题 -->
+    <style name="Theme.AutoDial.SmsConfirm" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+    </style>
 </resources>

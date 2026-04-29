@@ -21,6 +21,7 @@ import android.telephony.PhoneStateListener
 import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
+import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -40,6 +41,8 @@ class DialService : Service() {
         private const val ACTION_LAST_CALL_HINT = "com.autodial.LAST_CALL_HINT"
         /** 拨号前需要用户选卡时发出此广播，MainActivity 弹出 SimSelectBottomSheet */
         const val ACTION_SHOW_SIM_SELECT = "com.autodial.SHOW_SIM_SELECT"
+        /** 收到短信发送请求时发出此广播，MainActivity 启动 SmsConfirmActivity */
+        const val ACTION_SHOW_SMS_CONFIRM = "com.autodial.SHOW_SMS_CONFIRM"
 
         var isRunning = false
             private set
@@ -54,7 +57,16 @@ class DialService : Service() {
         fun sendDialResult(number: String, status: String) {
             _sendResult?.invoke(number, status)
         }
+        // 供 SmsConfirmActivity 调用，回报短信发送结果给电脑
+        fun sendSmsResult(number: String, status: String) {
+            try {
+                _webSocketRef?.send(JSONObject().apply {
+                    put("type", "sms_result"); put("number", number); put("status", status)
+                }.toString())
+            } catch (_: Exception) {}
+        }
         private var _sendResult: ((String, String) -> Unit)? = null
+        private var _webSocketRef: WebSocket? = null
     }
 
     private var webSocket: WebSocket? = null
@@ -250,6 +262,21 @@ class DialService : Service() {
                                 Log.d(TAG, "收到挂断指令")
                                 handler.post { endCall() }
                             }
+                            "sms" -> {
+                                val number = msg.optString("number", "")
+                                val content = msg.optString("content", "")
+                                if (number.isNotEmpty()) {
+                                    Log.d(TAG, "短信请求: $number, 内容长度=${content.length}")
+                                    handler.post {
+                                        val intent = Intent(ACTION_SHOW_SMS_CONFIRM).apply {
+                                            putExtra("number", number)
+                                            putExtra("content", content)
+                                            setPackage(packageName)
+                                        }
+                                        sendBroadcast(intent)
+                                    }
+                                }
+                            }
                         }
                     } catch (e: Exception) { Log.e(TAG, "处理消息失败: ${e.message}") }
                 }
@@ -289,6 +316,7 @@ class DialService : Service() {
                     }.toString())
                 } catch (_: Exception) {}
             }
+            _webSocketRef = webSocket
         } catch (e: Exception) {
             Log.e(TAG, "创建连接失败: ${e.message}")
             handler.post { notifyConnectionChange(false, "connection_failed") }
@@ -329,6 +357,7 @@ class DialService : Service() {
         try { webSocket?.cancel() } catch (_: Exception) {}
         webSocket = null; isConnected = false
         _sendResult = null
+        _webSocketRef = null
         updateNotification("AutoDial 运行中")
     }
 

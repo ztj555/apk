@@ -14,7 +14,7 @@ async function build() {
       name: 'AutoDial',
       platform: 'win32',
       arch: 'x64',
-      out: 'dist-packager',
+      out: 'output',
       overwrite: true,
       asar: true,
       electronVersion: '28.3.3',
@@ -28,8 +28,7 @@ async function build() {
         }
       },
       ignore: [
-        /^\/dist/,
-        /^\/dist-packager/,
+        /^\/output/,
         /^\/build-output\.log/,
         /^\/build-local\.bat/,
         /^\/pack\.js/,
