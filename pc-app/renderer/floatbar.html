@@ -41,11 +41,11 @@
     width: 100%; height: 100%;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     background: var(--floatbar-bg);
     border: 1px solid var(--floatbar-border);
     border-radius: var(--radius-lg);
-    padding: 0 6px 0 8px;
+    padding: 0 8px 0 10px;
     box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.06);
     backdrop-filter: var(--floatbar-blur);
     -webkit-backdrop-filter: var(--floatbar-blur);
@@ -84,13 +84,13 @@
     width: 1px; height: 20px;
     background: rgba(255,255,255,0.08);
     flex-shrink: 0;
-    margin: 0 2px;
+    margin: 0 1px;
   }
-  .fb-scan-btn {
+  .fb-clear-btn {
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: var(--radius-md);
-    padding: 3px 8px;
+    padding: 3px 6px;
     color: var(--gold-light);
     font-size: 11px;
     cursor: pointer;
@@ -98,9 +98,8 @@
     transition: all 0.15s;
     flex-shrink: 0;
   }
-  .fb-scan-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--gold); }
-  .fb-scan-btn:active { transform: scale(0.95); }
-  .fb-scan-btn.scanning { pointer-events: none; opacity: 0.6; }
+  .fb-clear-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--gold); }
+  .fb-clear-btn:active { transform: scale(0.95); }
   .fb-input {
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.06);
@@ -109,36 +108,35 @@
     color: var(--text);
     font-size: 12px;
     font-weight: 600;
-    width: 110px;
+    flex: 1;
+    min-width: 80px;
     outline: none;
     letter-spacing: 0.5px;
     transition: border-color 0.15s;
-    flex-shrink: 1;
-    min-width: 60px;
   }
   .fb-input::placeholder { color: var(--text2); font-size: 10px; font-weight: 400; }
   .fb-input:focus { border-color: var(--gold); }
   .fb-dial-btn {
     background: var(--gradient-green);
     border: none; border-radius: var(--radius-md);
-    padding: 3px 10px;
+    padding: 3px 8px;
     color: white; font-size: 11px; font-weight: 700;
     cursor: pointer; white-space: nowrap;
     transition: all 0.15s;
     flex-shrink: 0;
-    display: flex; align-items: center; gap: 3px;
+    display: flex; align-items: center; gap: 2px;
   }
   .fb-dial-btn:hover:not(:disabled) { filter: brightness(1.15); }
   .fb-dial-btn:disabled { background: var(--bg3); color: var(--red); cursor: default; opacity: 0.7; font-size: 10px; }
   .fb-hangup-btn {
     background: var(--gradient-red);
     border: none; border-radius: var(--radius-md);
-    padding: 3px 10px;
+    padding: 3px 8px;
     color: white; font-size: 11px; font-weight: 700;
     cursor: pointer; white-space: nowrap;
     transition: all 0.15s;
     flex-shrink: 0;
-    display: flex; align-items: center; gap: 3px;
+    display: flex; align-items: center; gap: 2px;
   }
   .fb-hangup-btn:hover:not(:disabled) { filter: brightness(1.15); }
   .fb-hangup-btn:disabled { background: var(--bg3); color: var(--red); cursor: default; opacity: 0.7; font-size: 10px; }
@@ -146,7 +144,7 @@
     background: none;
     border: 1px solid var(--gold-dark);
     border-radius: var(--radius-md);
-    padding: 3px 10px;
+    padding: 3px 8px;
     color: var(--gold);
     font-size: 11px;
     cursor: pointer;
@@ -197,10 +195,10 @@
     backdrop-filter: var(--floatbar-blur);
     -webkit-backdrop-filter: var(--floatbar-blur);
   }
-  /* 缩放内容层 - 实际内容通过 transform scale 缩放 */
+  /* 缩放内容层 */
   .fb-content {
     transform-origin: left center;
-    width: 340px;
+    width: 440px;
     height: 48px;
   }
   /* 右键菜单 */
@@ -244,7 +242,7 @@
   <div class="float-bar" id="floatBar">
     <div class="fb-dot" id="fbDot"></div>
     <div class="fb-sep"></div>
-    <button class="fb-scan-btn" id="fbScanBtn">清空</button>
+    <button class="fb-clear-btn" id="fbClearBtn">清空</button>
     <input type="text" class="fb-input" id="fbInput" placeholder="输入或复制号码..." inputmode="tel" autocomplete="off">
     <div class="fb-sep"></div>
     <button class="fb-dial-btn" id="fbDialBtn" disabled>&#x1F4DE; 拨打</button>
@@ -362,7 +360,7 @@ updateDialBtnText();
 updateHangupBtnText();
 
 // ==================== 按钮 ====================
-document.getElementById('fbScanBtn').addEventListener('click', clearNumber);
+document.getElementById('fbClearBtn').addEventListener('click', clearNumber);
 document.getElementById('fbDialBtn').addEventListener('click', dialFromFloat);
 document.getElementById('fbHangupBtn').addEventListener('click', hangupFromFloat);
 document.getElementById('fbSmsBtn').addEventListener('click', () => {
@@ -389,11 +387,10 @@ document.getElementById('fbInput').addEventListener('input', function() {
   bar.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    // 用 fixed 定位，直接用屏幕坐标
     const menuW = 140, menuH = 64;
     let left = e.clientX;
-    let top = e.clientY - menuH - 4; // 在鼠标上方
-    if (top < 0) top = e.clientY + 4; // 上方空间不够就在下方
+    let top = e.clientY - menuH - 4;
+    if (top < 0) top = e.clientY + 4;
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
     menu.classList.add('show');

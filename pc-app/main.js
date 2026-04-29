@@ -331,7 +331,7 @@ function createFloatBarWindow() {
 
   // 悬浮条初始位置：紧贴主界面右边，垂直与主界面状态栏的悬浮条开关平齐
   const mainW = 420, mainH = 780;
-  const barW = 340, barH = 48;
+  const barW = 440, barH = 48;
   const mainX = Math.round((screenW - mainW) / 2);
   const mainY = Math.round((screenH - mainH) / 2);
   const initialX = mainX + mainW + 8; // 主界面右边，间距 8px
@@ -634,7 +634,7 @@ ipcMain.on('floatbar-resize', (event, delta) => {
   floatBarScale = Math.max(FLOATBAR_MIN_SCALE, Math.min(FLOATBAR_MAX_SCALE, floatBarScale));
   if (floatBarScale === oldScale) return;
 
-  const baseW = 340, baseH = 48;
+  const baseW = 440, baseH = 48;
   const newW = Math.round(baseW * floatBarScale);
   const newH = Math.round(baseH * floatBarScale);
   // 以左上角为锚点，窗口大小跟随缩放
