@@ -109,7 +109,8 @@
     font-size: 12px;
     font-weight: 600;
     flex: 1;
-    min-width: 80px;
+    min-width: 0;
+    max-width: 130px;
     outline: none;
     letter-spacing: 0.5px;
     transition: border-color 0.15s;
@@ -195,12 +196,6 @@
     backdrop-filter: var(--floatbar-blur);
     -webkit-backdrop-filter: var(--floatbar-blur);
   }
-  /* 缩放内容层 */
-  .fb-content {
-    transform-origin: left center;
-    width: 440px;
-    height: 48px;
-  }
   /* 右键菜单 */
   .fb-context-menu {
     position: fixed;
@@ -238,18 +233,16 @@
 <script src="js/theme.js"></script>
 </head>
 <body>
-<div class="fb-content" id="fbContent">
-  <div class="float-bar" id="floatBar">
-    <div class="fb-dot" id="fbDot"></div>
-    <div class="fb-sep"></div>
-    <button class="fb-clear-btn" id="fbClearBtn">清空</button>
-    <input type="text" class="fb-input" id="fbInput" placeholder="输入或复制号码..." inputmode="tel" autocomplete="off">
-    <div class="fb-sep"></div>
-    <button class="fb-dial-btn" id="fbDialBtn" disabled>&#x1F4DE; 拨打</button>
-    <button class="fb-hangup-btn" id="fbHangupBtn" disabled>&#x1F4F5; 挂断</button>
-    <button class="fb-sms-btn" id="fbSmsBtn">&#x1F4AC; 短信</button>
-    <div class="fb-resize-handle" id="fbResizeHandle"></div>
-  </div>
+<div class="float-bar" id="floatBar">
+  <div class="fb-dot" id="fbDot"></div>
+  <div class="fb-sep"></div>
+  <button class="fb-clear-btn" id="fbClearBtn">清空</button>
+  <input type="text" class="fb-input" id="fbInput" placeholder="输入或复制号码..." inputmode="tel" autocomplete="off">
+  <div class="fb-sep"></div>
+  <button class="fb-dial-btn" id="fbDialBtn" disabled>&#x1F4DE; 拨打</button>
+  <button class="fb-hangup-btn" id="fbHangupBtn" disabled>&#x1F4F5; 挂断</button>
+  <button class="fb-sms-btn" id="fbSmsBtn">&#x1F4AC; 短信</button>
+  <div class="fb-resize-handle" id="fbResizeHandle"></div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -259,16 +252,6 @@ if (typeof ThemeEngine !== 'undefined') ThemeEngine.initTheme();
 
 /* window.api 通过 preload.js contextBridge 注入 */
 let isConnected = false;
-let currentScale = 1.0;
-
-// 监听主进程推送的缩放值，用 CSS transform 缩放内容
-window.api.on('floatbar-scale-changed', (scale) => {
-  currentScale = scale;
-  const content = document.getElementById('fbContent');
-  if (content) {
-    content.style.transform = 'scale(' + scale + ')';
-  }
-});
 
 // ==================== 拖拽缩放（右下角手柄） ====================
 (function() {
@@ -331,7 +314,6 @@ window.api.on('floatbar-scale-changed', (scale) => {
 })();
 
 // ==================== 按钮状态文字 ====================
-// 拨打按钮：disabled 时显示原因文字，enabled 时恢复正常
 function updateDialBtnText() {
   const btn = document.getElementById('fbDialBtn');
   if (btn.disabled) {
@@ -340,7 +322,6 @@ function updateDialBtnText() {
     btn.innerHTML = '\uD83D\uDCDE 拨打';
   }
 }
-// 挂断按钮：disabled 时显示提示，enabled 时恢复正常
 function updateHangupBtnText() {
   const btn = document.getElementById('fbHangupBtn');
   if (btn.disabled) {
@@ -350,12 +331,10 @@ function updateHangupBtnText() {
   }
 }
 
-// 监听拨号按钮 disabled 变化
 const dialBtn = document.getElementById('fbDialBtn');
 const hangupBtn = document.getElementById('fbHangupBtn');
 new MutationObserver(updateDialBtnText).observe(dialBtn, { attributes: true, attributeFilter: ['disabled'] });
 new MutationObserver(updateHangupBtnText).observe(hangupBtn, { attributes: true, attributeFilter: ['disabled'] });
-// 初始化
 updateDialBtnText();
 updateHangupBtnText();
 
@@ -367,7 +346,6 @@ document.getElementById('fbSmsBtn').addEventListener('click', () => {
   window.api.send('open-sms', '');
 });
 
-// 输入框实时更新拨号按钮状态
 document.getElementById('fbInput').addEventListener('input', function() {
   document.getElementById('fbDialBtn').disabled = !(this.value.trim() && isConnected);
 });
@@ -376,7 +354,6 @@ document.getElementById('fbInput').addEventListener('input', function() {
 (function() {
   const bar = document.getElementById('floatBar');
 
-  // 创建右键菜单
   let menu = document.createElement('div');
   menu.className = 'fb-context-menu';
   menu.id = 'fbContextMenu';

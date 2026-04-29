@@ -637,12 +637,7 @@ ipcMain.on('floatbar-resize', (event, delta) => {
   const baseW = 440, baseH = 48;
   const newW = Math.round(baseW * floatBarScale);
   const newH = Math.round(baseH * floatBarScale);
-  // 以左上角为锚点，窗口大小跟随缩放
   floatBarWindow.setSize(newW, newH);
-  // 推送缩放值给渲染进程，用 CSS transform 缩放内容
-  try {
-    floatBarWindow.webContents.send('floatbar-scale-changed', floatBarScale);
-  } catch (e) {}
 });
 
 // 获取当前缩放值
