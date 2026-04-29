@@ -105,24 +105,31 @@
   }
   .recipient-box {
     background: var(--bg2);
-    border: 1px solid var(--bg3);
+    border: 2px solid var(--bg3);
     border-radius: var(--radius-md);
     padding: 12px 16px;
     display: flex;
     align-items: center;
     gap: 10px;
+    transition: border-color 0.2s;
   }
+  .recipient-box:focus-within { border-color: var(--gold); }
   .recipient-icon {
     font-size: 18px;
     flex-shrink: 0;
   }
-  .recipient-number {
+  .recipient-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
     font-size: 20px;
     font-weight: 700;
     color: var(--gold-light);
     letter-spacing: 2px;
-    flex: 1;
+    caret-color: var(--gold);
   }
+  .recipient-input::placeholder { color: var(--text2); font-size: 14px; font-weight: 400; letter-spacing: 1px; }
 
   /* 短信内容 */
   .sms-content {
@@ -186,6 +193,177 @@
     cursor: wait;
   }
 
+  /* 快捷短信模板 */
+  .quick-templates {
+    flex-shrink: 0;
+  }
+  .quick-templates .field-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .tpl-manage-btn {
+    font-size: 10px;
+    color: var(--text2);
+    cursor: pointer;
+    background: none;
+    border: none;
+    letter-spacing: 0;
+    text-transform: none;
+    transition: color 0.15s;
+  }
+  .tpl-manage-btn:hover { color: var(--gold); }
+  .tpl-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tpl-tag {
+    background: var(--bg2);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-md);
+    padding: 5px 10px;
+    font-size: 11px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tpl-tag:hover { border-color: var(--gold); color: var(--gold-light); background: rgba(201,168,76,0.08); }
+  .tpl-tag:active { transform: scale(0.95); }
+
+  /* 模板管理弹窗 */
+  .tpl-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+  }
+  .tpl-modal-overlay.show { display: flex; }
+  .tpl-modal {
+    background: var(--bg);
+    border: 1px solid var(--gold-dark);
+    border-radius: var(--radius-lg);
+    width: 340px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+  .tpl-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--bg3);
+    flex-shrink: 0;
+  }
+  .tpl-modal-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gold-light);
+    letter-spacing: 1px;
+  }
+  .tpl-modal-close {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s;
+  }
+  .tpl-modal-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+  .tpl-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .tpl-modal-body::-webkit-scrollbar { width: 3px; }
+  .tpl-modal-body::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+  .tpl-edit-item {
+    background: var(--bg2);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .tpl-edit-item input,
+  .tpl-edit-item textarea {
+    background: var(--bg);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font-family);
+    outline: none;
+    resize: none;
+    transition: border-color 0.2s;
+  }
+  .tpl-edit-item input:focus,
+  .tpl-edit-item textarea:focus { border-color: var(--gold); }
+  .tpl-edit-item input::placeholder,
+  .tpl-edit-item textarea::placeholder { color: var(--text2); font-size: 11px; }
+  .tpl-edit-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .tpl-edit-save {
+    background: var(--gold-dark);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 4px 12px;
+    color: white;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tpl-edit-save:hover { background: var(--gold); }
+  .tpl-edit-del {
+    background: none;
+    border: 1px solid var(--red);
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+    color: var(--red);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tpl-edit-del:hover { background: rgba(231,76,60,0.15); }
+  .tpl-modal-footer {
+    padding: 10px 16px;
+    border-top: 1px solid var(--bg3);
+    flex-shrink: 0;
+  }
+  .tpl-add-btn {
+    width: 100%;
+    background: none;
+    border: 1px dashed var(--gold-dark);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    color: var(--gold);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tpl-add-btn:hover { border-color: var(--gold); background: rgba(201,168,76,0.08); }
+
   /* Toast */
   .toast {
     position: fixed; bottom: 12px; left: 50%;
@@ -218,7 +396,7 @@
     <div class="field-label">&#x1F4E6; 收件人</div>
     <div class="recipient-box">
       <span class="recipient-icon">&#x1F4F1;</span>
-      <span class="recipient-number" id="recipientNumber">--</span>
+      <input type="text" class="recipient-input" id="recipientInput" placeholder="输入收件人号码..." inputmode="tel" autocomplete="off" maxlength="20">
     </div>
 
     <!-- 短信内容 -->
@@ -226,11 +404,34 @@
     <textarea class="sms-content" id="smsContent" placeholder="请输入短信内容..." maxlength="500"></textarea>
     <div class="char-count" id="charCount">0 / 500</div>
 
+    <!-- 快捷模板 -->
+    <div class="quick-templates">
+      <div class="field-label">
+        <span>&#x26A1; 快捷模板</span>
+        <button class="tpl-manage-btn" id="tplManageBtn">管理</button>
+      </div>
+      <div class="tpl-list" id="tplList"></div>
+    </div>
+
     <!-- 发送按钮 -->
     <button class="send-btn" id="sendBtn" disabled>&#x1F4E8; 请输入内容</button>
   </div>
 </div>
 <div class="toast" id="toast"></div>
+
+<!-- 模板管理弹窗 -->
+<div class="tpl-modal-overlay" id="tplModalOverlay">
+  <div class="tpl-modal">
+    <div class="tpl-modal-header">
+      <span class="tpl-modal-title">管理快捷模板</span>
+      <button class="tpl-modal-close" id="tplModalClose">&times;</button>
+    </div>
+    <div class="tpl-modal-body" id="tplModalBody"></div>
+    <div class="tpl-modal-footer">
+      <button class="tpl-add-btn" id="tplAddBtn">+ 添加新模板</button>
+    </div>
+  </div>
+</div>
 
 <script>
 /* window.api 通过 preload.js contextBridge 注入 */
@@ -248,9 +449,18 @@ document.getElementById('btnClose').addEventListener('click', () => {
 });
 
 // ==================== 接收号码 ====================
+const recipientInput = document.getElementById('recipientInput');
+
 window.api.on('sms-number', (number) => {
-  currentNumber = number || '--';
-  document.getElementById('recipientNumber').textContent = currentNumber;
+  if (number) {
+    recipientInput.value = number;
+  }
+  updateSendBtn();
+});
+
+// 收件人输入实时同步
+recipientInput.addEventListener('input', () => {
+  currentNumber = recipientInput.value.trim().replace(/\s/g, '');
   updateSendBtn();
 });
 
@@ -268,11 +478,12 @@ smsContent.addEventListener('input', () => {
 
 function updateSendBtn() {
   if (isSending) return;
+  currentNumber = recipientInput.value.trim().replace(/\s/g, '');
   const hasContent = smsContent.value.trim().length > 0;
-  const hasNumber = currentNumber && currentNumber !== '--';
+  const hasNumber = currentNumber.length > 0;
   sendBtn.disabled = !(hasContent && hasNumber);
   if (sendBtn.disabled) {
-    sendBtn.textContent = !hasNumber ? '\uD83D\uDCF1 \u8BF7\u8FDE\u63A5\u624B\u673A' : '\u270D\uFE0F \u8BF7\u8F93\u5165\u5185\u5BB9';
+    sendBtn.textContent = !hasNumber ? '\uD83D\uDCF1 \u8BF7\u8F93\u5165\u53F7\u7801' : '\u270D\uFE0F \u8BF7\u8F93\u5165\u5185\u5BB9';
   } else {
     sendBtn.innerHTML = '\uD83D\uDCE8 \u53D1\u9001';
   }
@@ -281,7 +492,8 @@ function updateSendBtn() {
 // ==================== 发送 ====================
 sendBtn.addEventListener('click', () => {
   const content = smsContent.value.trim();
-  if (!content || !currentNumber || currentNumber === '--') return;
+  currentNumber = recipientInput.value.trim().replace(/\s/g, '');
+  if (!content || !currentNumber) return;
 
   isSending = true;
   sendBtn.disabled = true;
@@ -326,6 +538,113 @@ function showToast(msg, type) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.className = 'toast'; }, 2500);
 }
+
+// ==================== 快捷短信模板 ====================
+const TPL_STORAGE_KEY = 'autodial_sms_templates';
+const DEFAULT_TEMPLATES = [
+  { id: 1, title: '回访问候', content: '您好，我是之前联系过您的客服，请问您对我们产品还有什么疑问吗？' },
+  { id: 2, title: '催办提醒', content: '您好，温馨提醒您，您的业务办理进度已更新，请及时查看。' },
+  { id: 3, title: '会议通知', content: '您好，我们将于明天上午10点召开线上会议，届时请准时参加。' },
+  { id: 4, title: '感谢回复', content: '感谢您的咨询与支持，如有其他问题随时联系我们，祝您生活愉快！' },
+  { id: 5, title: '节日祝福', content: '值此佳节来临之际，祝您及家人节日快乐，万事如意！' }
+];
+
+function loadTemplates() {
+  try {
+    const raw = localStorage.getItem(TPL_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+}
+
+function saveTemplates(templates) {
+  try { localStorage.setItem(TPL_STORAGE_KEY, JSON.stringify(templates)); } catch (e) {}
+}
+
+function renderTemplateTags() {
+  const templates = loadTemplates();
+  const container = document.getElementById('tplList');
+  container.innerHTML = '';
+  templates.forEach(tpl => {
+    const tag = document.createElement('div');
+    tag.className = 'tpl-tag';
+    tag.textContent = tpl.title;
+    tag.title = tpl.content;
+    tag.addEventListener('click', () => {
+      smsContent.value = tpl.content;
+      smsContent.dispatchEvent(new Event('input'));
+      smsContent.focus();
+    });
+    container.appendChild(tag);
+  });
+}
+
+// ==================== 模板管理弹窗 ====================
+const tplOverlay = document.getElementById('tplModalOverlay');
+const tplModalBody = document.getElementById('tplModalBody');
+
+document.getElementById('tplManageBtn').addEventListener('click', openTplModal);
+document.getElementById('tplModalClose').addEventListener('click', closeTplModal);
+document.getElementById('tplAddBtn').addEventListener('click', () => addTplEditItem(null));
+tplOverlay.addEventListener('click', (e) => {
+  if (e.target === tplOverlay) closeTplModal();
+});
+
+function openTplModal() {
+  tplModalBody.innerHTML = '';
+  const templates = loadTemplates();
+  templates.forEach(tpl => addTplEditItem(tpl));
+  tplOverlay.classList.add('show');
+}
+
+function closeTplModal() {
+  tplOverlay.classList.remove('show');
+  renderTemplateTags();
+}
+
+function addTplEditItem(tpl) {
+  const item = document.createElement('div');
+  item.className = 'tpl-edit-item';
+  item.innerHTML =
+    '<input type="text" class="tpl-edit-title" placeholder="模板名称" maxlength="20" value="' + (tpl ? tpl.title.replace(/"/g, '&quot;') : '') + '">' +
+    '<textarea class="tpl-edit-content" placeholder="模板内容" rows="2" maxlength="500">' + (tpl ? tpl.content : '') + '</textarea>' +
+    '<div class="tpl-edit-row">' +
+      '<button class="tpl-edit-del">' + (tpl ? '删除' : '取消') + '</button>' +
+      '<button class="tpl-edit-save">保存</button>' +
+    '</div>';
+  tplModalBody.appendChild(item);
+
+  // 保存
+  item.querySelector('.tpl-edit-save').addEventListener('click', () => {
+    const title = item.querySelector('.tpl-edit-title').value.trim();
+    const content = item.querySelector('.tpl-edit-content').value.trim();
+    if (!title || !content) { showToast('名称和内容不能为空', 'error'); return; }
+    const templates = loadTemplates();
+    if (tpl) {
+      const idx = templates.findIndex(t => t.id === tpl.id);
+      if (idx >= 0) { templates[idx].title = title; templates[idx].content = content; }
+    } else {
+      const newId = templates.length > 0 ? Math.max(...templates.map(t => t.id)) + 1 : 1;
+      templates.push({ id: newId, title, content });
+    }
+    saveTemplates(templates);
+    item.remove();
+    showToast('已保存', 'success');
+  });
+
+  // 删除/取消
+  item.querySelector('.tpl-edit-del').addEventListener('click', () => {
+    if (tpl) {
+      const templates = loadTemplates();
+      saveTemplates(templates.filter(t => t.id !== tpl.id));
+      showToast('已删除', 'success');
+    }
+    item.remove();
+  });
+}
+
+// 初始化模板
+renderTemplateTags();
 
 // ==================== 快捷键 ====================
 document.addEventListener('keydown', e => {

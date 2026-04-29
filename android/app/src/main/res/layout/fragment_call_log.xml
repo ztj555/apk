@@ -2,6 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:tag="bg"
     android:background="#111318"
     android:orientation="vertical">
 
@@ -9,6 +10,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="52dp"
+        android:tag="bg2"
         android:background="#1A1D24"
         android:gravity="center_vertical"
         android:orientation="horizontal"
@@ -19,6 +21,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="📋 通话记录"
+            android:tag="goldLight"
             android:textColor="#F0C040"
             android:textSize="18sp"
             android:textStyle="bold" />
@@ -33,6 +36,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="0 条记录"
+            android:tag="text2"
             android:textColor="#A09070"
             android:textSize="12sp" />
     </LinearLayout>
@@ -42,6 +46,7 @@
         android:id="@+id/dialModeBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:tag="bg2"
         android:background="#1A1D24"
         android:gravity="center"
         android:orientation="horizontal"
@@ -56,6 +61,7 @@
             android:layout_height="32dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
+            android:tag="text2"
             android:background="#22252E"
             android:gravity="center"
             android:text="弹窗"
@@ -135,7 +141,7 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
-    <!-- 上次通话提示横幅（拨号前对比） -->
+    <!-- 上次通话提示横幅 -->
     <LinearLayout
         android:id="@+id/lastCallHintBanner"
         android:layout_width="match_parent"
@@ -161,6 +167,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="上次：卡1  04-25"
+            android:tag="goldLight"
             android:textColor="#C9A84C"
             android:textSize="17sp"
             android:textStyle="bold" />
@@ -194,6 +201,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="暂无通话记录"
+            android:tag="text2"
             android:textColor="#A09070"
             android:textSize="14sp" />
     </LinearLayout>

@@ -430,7 +430,7 @@
       <button class="call-btn" id="callBtn" disabled>&#x1F4DE; 拨号</button>
       <button class="hangup-btn" id="hangupBtn" disabled>&#x1F4F5; 挂断</button>
     </div>
-    <div class="sms-row" id="smsRow" style="display:none;">
+    <div class="sms-row">
       <button class="sms-btn" id="smsBtn">&#x1F4AC; 发短信</button>
     </div>
 
@@ -491,10 +491,7 @@ document.getElementById('callBtn').addEventListener('click', dial);
 document.getElementById('hangupBtn').addEventListener('click', hangup);
 document.getElementById('logToggle').addEventListener('click', toggleLog);
 document.getElementById('smsBtn').addEventListener('click', () => {
-  const number = document.getElementById('numberInput').value.trim().replace(/\s/g, '');
-  if (number) {
-    window.api.send('open-sms', number);
-  }
+  window.api.send('open-sms', '');
 });
 
 // ==================== 按钮状态文字 ====================
@@ -560,10 +557,6 @@ async function init() {
   });
   window.api.on('dial-result', (data) => {
     addLog(data.status === 'ok' ? 'success' : 'error', data.number + ' ' + (data.status === 'ok' ? '&#x2713;' : '&#x2717;'));
-    // 拨号成功显示发短信按钮
-    if (data.status === 'ok' && isConnected) {
-      document.getElementById('smsRow').style.display = 'block';
-    }
   });
   window.api.on('dial-sent', (data) => {
     addLog('success', '&#x1F4DE; 已发送: ' + data.number);
@@ -601,7 +594,6 @@ function setPhoneConnected(connected, phoneIP) {
     txt.textContent = '等待连接';
     banner.className = 'banner';
     addLog('error', '手机已断开');
-    document.getElementById('smsRow').style.display = 'none';
   }
 }
 

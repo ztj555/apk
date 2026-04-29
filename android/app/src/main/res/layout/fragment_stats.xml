@@ -2,6 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:tag="bg"
     android:background="#111318"
     android:orientation="vertical">
 
@@ -9,6 +10,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="52dp"
+        android:tag="bg2"
         android:background="#1A1D24"
         android:gravity="center_vertical"
         android:orientation="horizontal"
@@ -19,6 +21,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="📊 拨号统计"
+            android:tag="goldLight"
             android:textColor="#F0C040"
             android:textSize="18sp"
             android:textStyle="bold" />
@@ -38,6 +41,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:tag="bg2"
                 android:background="#1A1D24"
                 android:gravity="center"
                 android:orientation="vertical"
@@ -47,6 +51,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="今日拨号"
+                    android:tag="text2"
                     android:textColor="#A09070"
                     android:textSize="14sp" />
 
@@ -56,6 +61,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:text="0"
+                    android:tag="goldLight"
                     android:textColor="#F0C040"
                     android:textSize="48sp"
                     android:textStyle="bold" />
@@ -64,13 +70,16 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="次"
+                    android:tag="text2"
                     android:textColor="#A09070"
                     android:textSize="14sp" />
 
                 <View
+                    android:id="@+id/statsDivider1"
                     android:layout_width="60dp"
                     android:layout_height="1dp"
                     android:layout_marginTop="20dp"
+                    android:tag="goldDark"
                     android:background="#C9A84C" />
 
                 <TextView
@@ -78,6 +87,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:text="累计拨号"
+                    android:tag="text2"
                     android:textColor="#A09070"
                     android:textSize="14sp" />
 
@@ -87,6 +97,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="0"
+                    android:tag="text"
                     android:textColor="#E8DCC8"
                     android:textSize="24sp"
                     android:textStyle="bold" />
@@ -95,6 +106,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="次"
+                    android:tag="text2"
                     android:textColor="#A09070"
                     android:textSize="14sp" />
 
@@ -107,63 +119,57 @@
                 android:layout_marginTop="24dp"
                 android:layout_marginBottom="12dp"
                 android:text="📈 近 7 天趋势"
+                android:tag="text"
                 android:textColor="#E8DCC8"
                 android:textSize="16sp" />
 
-            <!-- 近7天柱状图（用 LinearLayout 模拟） -->
+            <!-- 近7天柱状图 -->
             <LinearLayout
                 android:id="@+id/statsChartContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:tag="bg2"
                 android:background="#1A1D24"
                 android:gravity="bottom|center_horizontal"
                 android:orientation="horizontal"
                 android:padding="16dp"
-                android:paddingBottom="0dp">
-
-                <!-- 7个柱子会在这里动态添加 -->
-
-            </LinearLayout>
+                android:paddingBottom="0dp" />
 
             <!-- 日期标签 -->
             <LinearLayout
                 android:id="@+id/statsDateLabels"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:tag="bg2"
                 android:background="#1A1D24"
                 android:gravity="center"
                 android:orientation="horizontal"
-                android:paddingBottom="12dp">
-
-                <!-- 7个日期标签会动态添加 -->
-
-            </LinearLayout>
+                android:paddingBottom="12dp" />
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:layout_marginTop="20dp"
+                android:tag="divider"
                 android:background="#22262F" />
 
-            <!-- 详细列表 -->
+            <!-- 详细列表标题 -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="12dp"
                 android:text="📅 每日明细"
+                android:tag="text"
                 android:textColor="#E8DCC8"
                 android:textSize="16sp" />
 
+            <!-- 详细列表 -->
             <LinearLayout
                 android:id="@+id/statsDetailList"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <!-- 动态添加每日明细行 -->
-
-            </LinearLayout>
+                android:orientation="vertical" />
 
             <View
                 android:layout_width="match_parent"

@@ -2,6 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:tag="bg"
     android:background="#111318"
     android:fillViewport="true">
 
@@ -19,6 +20,7 @@
             android:layout_marginTop="24dp"
             android:text="⚙️ 设置"
             android:textSize="28sp"
+            android:tag="goldLight"
             android:textColor="#F0C040"
             android:textStyle="bold"
             android:letterSpacing="0.1" />
@@ -43,6 +45,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:text="未连接"
+                android:tag="text2"
                 android:textSize="16sp"
                 android:textColor="#A09070" />
         </LinearLayout>
@@ -75,6 +78,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="28dp"
             android:text="连接设置"
+            android:tag="text2"
             android:textColor="#A09070"
             android:textSize="12sp" />
 
@@ -84,6 +88,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="电脑配对码"
+            android:tag="text2"
             android:textColor="#605040"
             android:textSize="12sp" />
 
@@ -92,6 +97,7 @@
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="6dp"
+            android:tag="bg2"
             android:background="#1A1D24"
             android:hint="输入电脑屏幕上的4位数字"
             android:textColorHint="#605040"
@@ -143,6 +149,7 @@
             android:layout_width="match_parent"
             android:layout_height="52dp"
             android:layout_marginTop="16dp"
+            android:tag="goldBtn"
             android:background="#C9A84C"
             android:gravity="center"
             android:orientation="horizontal">
@@ -163,6 +170,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
             android:text="其他设置"
+            android:tag="text2"
             android:textColor="#A09070"
             android:textSize="12sp" />
 
@@ -172,6 +180,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
+            android:tag="bg2"
             android:background="#1A1D24"
             android:gravity="center_vertical"
             android:orientation="horizontal"
@@ -190,6 +199,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="自动连接"
+                    android:tag="text"
                     android:textColor="#E8DCC8"
                     android:textSize="16sp" />
 
@@ -198,6 +208,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="3dp"
                     android:text="断开后自动重连电脑"
+                    android:tag="text2"
                     android:textColor="#605040"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -207,6 +218,7 @@
                 android:id="@+id/autoConnectSwitch"
                 android:layout_width="52dp"
                 android:layout_height="28dp"
+                android:tag="switchOn"
                 android:background="#C9A84C"
                 android:gravity="center"
                 android:text="开"
@@ -221,6 +233,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
+            android:tag="bg2"
             android:background="#1A1D24"
             android:gravity="center_vertical"
             android:orientation="horizontal"
@@ -239,6 +252,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="电池优化"
+                    android:tag="text"
                     android:textColor="#E8DCC8"
                     android:textSize="16sp" />
 
@@ -248,6 +262,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="3dp"
                     android:text="检测中..."
+                    android:tag="text2"
                     android:textColor="#605040"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -256,6 +271,7 @@
                 android:id="@+id/batteryOptBtn"
                 android:layout_width="wrap_content"
                 android:layout_height="28dp"
+                android:tag="goldBtn"
                 android:background="#C9A84C"
                 android:gravity="center"
                 android:paddingStart="12dp"
@@ -279,14 +295,110 @@
                 android:visibility="gone" />
         </LinearLayout>
 
+        <!-- ===== 外观设置区域 ===== -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="外观"
+            android:tag="text2"
+            android:textColor="#A09070"
+            android:textSize="12sp" />
+
+        <!-- 主题选择入口 -->
+        <LinearLayout
+            android:id="@+id/themeSettingRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="主题"
+                    android:tag="text"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/themeCurrentName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="暗金 · 暗夜"
+                    android:tag="text2"
+                    android:textColor="#605040"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- 主题预览色块 -->
+            <LinearLayout
+                android:id="@+id/themePreviewColors"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <View
+                    android:id="@+id/previewGold"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:background="#C9A84C" />
+                <View
+                    android:id="@+id/previewBg"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginStart="3dp"
+                    android:background="#111318" />
+                <View
+                    android:id="@+id/previewBg2"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginStart="3dp"
+                    android:background="#1A1D24" />
+                <View
+                    android:id="@+id/previewText"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginStart="3dp"
+                    android:background="#E8DCC8" />
+            </LinearLayout>
+
+            <!-- 箭头 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="›"
+                android:tag="text2"
+                android:textColor="#A09070"
+                android:textSize="22sp" />
+        </LinearLayout>
+
         <!-- 关于信息 -->
         <TextView
+            android:id="@+id/aboutText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:layout_marginBottom="24dp"
-            android:text="AutoDial v1.2\n请确保手机和电脑在同一WiFi下"
+            android:text="AutoDial v3.1\n请确保手机和电脑在同一WiFi下"
             android:textSize="12sp"
+            android:tag="text2"
             android:textColor="#605040"
             android:gravity="center" />
 

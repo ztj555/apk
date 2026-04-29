@@ -76,11 +76,15 @@ class StatsFragment : Fragment() {
         } catch (_: Exception) {}
 
         refreshIfNeeded()
+
+        // 应用主题
+        applyTheme()
     }
 
     override fun onResume() {
         super.onResume()
         refreshIfNeeded()
+        applyTheme()
     }
 
     override fun onDestroyView() {
@@ -117,16 +121,17 @@ class StatsFragment : Fragment() {
         chartContainer.removeAllViews()
         dateLabels.removeAllViews()
 
+        val colors = ThemeManager.getColors(requireContext())
         val maxCount = (stats.maxOfOrNull { it.count } ?: 1).coerceAtLeast(1)
 
         val barColors = intArrayOf(
-            Color.parseColor("#C9A84C"),
-            Color.parseColor("#D4B35A"),
-            Color.parseColor("#F0C040"),
-            Color.parseColor("#2ECC71"),
-            Color.parseColor("#C9A84C"),
-            Color.parseColor("#D4B35A"),
-            Color.parseColor("#F0C040")
+            Color.parseColor(colors.gold),
+            Color.parseColor(colors.goldLight),
+            Color.parseColor(colors.gold),
+            Color.parseColor(colors.green),
+            Color.parseColor(colors.gold),
+            Color.parseColor(colors.goldLight),
+            Color.parseColor(colors.gold)
         )
 
         val maxBarHeightPx = TypedValue.applyDimension(
@@ -152,7 +157,7 @@ class StatsFragment : Fragment() {
             val countLabel = TextView(requireContext()).apply {
                 text = if (s.count > 0) s.count.toString() else ""
                 textSize = 11f
-                setTextColor(Color.parseColor("#A09070"))
+                setTextColor(Color.parseColor(colors.text2))
                 gravity = Gravity.CENTER_HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -171,7 +176,7 @@ class StatsFragment : Fragment() {
                 layoutParams = LinearLayout.LayoutParams(barWidthPx, actualBarHeight).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
                 }
-                setBackgroundColor(if (s.count > 0) barColors[i] else Color.parseColor("#22262F"))
+                setBackgroundColor(if (s.count > 0) barColors[i] else Color.parseColor(colors.bg3))
             }
             barWrapper.addView(bar)
 
@@ -185,7 +190,7 @@ class StatsFragment : Fragment() {
                 val dateStr = s.date.substring(5) // MM-dd
                 text = "$dayOfWeek\n$dateStr"
                 textSize = 10f
-                setTextColor(Color.parseColor("#605040"))
+                setTextColor(Color.parseColor(colors.text2))
                 gravity = Gravity.CENTER_HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     .apply { topMargin = 8 }
@@ -197,6 +202,7 @@ class StatsFragment : Fragment() {
 
     private fun buildDetailList(stats: List<CallLogDb.DayStats>) {
         detailList.removeAllViews()
+        val colors = ThemeManager.getColors(requireContext())
 
         // 倒序显示（最近的在上面）
         val reversed = stats.reversed()
@@ -206,7 +212,7 @@ class StatsFragment : Fragment() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(16, 14, 16, 14)
-                setBackgroundColor(Color.parseColor("#111318"))
+                setBackgroundColor(Color.parseColor(colors.bg))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -217,7 +223,7 @@ class StatsFragment : Fragment() {
             val dateText = TextView(requireContext()).apply {
                 text = s.date
                 textSize = 14f
-                setTextColor(Color.parseColor("#E8DCC8"))
+                setTextColor(Color.parseColor(colors.text))
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
@@ -225,7 +231,7 @@ class StatsFragment : Fragment() {
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             if (s.date == today) {
                 dateText.text = "$s.date（今天）"
-                dateText.setTextColor(Color.parseColor("#F0C040"))
+                dateText.setTextColor(Color.parseColor(colors.goldLight))
             }
 
             // 拨号次数
@@ -233,8 +239,8 @@ class StatsFragment : Fragment() {
                 text = "${s.count} 次"
                 textSize = 14f
                 setTextColor(
-                    if (s.count > 0) Color.parseColor("#C9A84C")
-                    else Color.parseColor("#605040")
+                    if (s.count > 0) Color.parseColor(colors.gold)
+                    else Color.parseColor(colors.text2)
                 )
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -248,7 +254,7 @@ class StatsFragment : Fragment() {
 
             // 分割线
             val divider = View(requireContext()).apply {
-                setBackgroundColor(Color.parseColor("#22262F"))
+                setBackgroundColor(Color.parseColor(colors.bg3))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, 1
                 ).apply {
@@ -258,5 +264,11 @@ class StatsFragment : Fragment() {
             }
             detailList.addView(divider)
         }
+    }
+
+    private fun applyTheme() {
+        if (!isAdded) return
+        val colors = ThemeManager.getColors(requireContext())
+        ThemeManager.applyToView(requireView(), colors)
     }
 }

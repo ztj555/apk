@@ -41,6 +41,12 @@ class ConnectFragment : Fragment() {
     private lateinit var batteryOptStatus: TextView
     private lateinit var batteryOptBtn: TextView
     private lateinit var batteryOptOk: TextView
+    private lateinit var themeSettingRow: View
+    private lateinit var themeCurrentName: TextView
+    private lateinit var previewGold: View
+    private lateinit var previewBg: View
+    private lateinit var previewBg2: View
+    private lateinit var previewText: View
 
     private var discoveredIP = ""
     private var discoveryJob: Job? = null
@@ -75,8 +81,19 @@ class ConnectFragment : Fragment() {
             batteryOptStatus = view.findViewById(R.id.batteryOptStatus)
             batteryOptBtn = view.findViewById(R.id.batteryOptBtn)
             batteryOptOk = view.findViewById(R.id.batteryOptOk)
+            themeSettingRow = view.findViewById(R.id.themeSettingRow)
+            themeCurrentName = view.findViewById(R.id.themeCurrentName)
+            previewGold = view.findViewById(R.id.previewGold)
+            previewBg = view.findViewById(R.id.previewBg)
+            previewBg2 = view.findViewById(R.id.previewBg2)
+            previewText = view.findViewById(R.id.previewText)
 
             connectBtn.setOnClickListener { toggleConnection() }
+
+            // 主题设置入口
+            themeSettingRow.setOnClickListener {
+                showThemeDialog()
+            }
 
             // 读取保存的配对码
             val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
@@ -111,6 +128,10 @@ class ConnectFragment : Fragment() {
             // 检查当前连接状态
             updateConnectionUI(DialService.isConnected, null)
 
+            // 应用主题
+            applyTheme()
+            updateThemePreview()
+
             // 配对码输入变化时自动扫描
             pinInput.addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -144,8 +165,10 @@ class ConnectFragment : Fragment() {
                 updateConnectionUI(false, null)
             }
         } catch (_: Exception) {}
-        // 从系统设置返回后刷新电池优化状态
         if (isAdded) updateBatteryOptUI()
+        // 刷新主题
+        applyTheme()
+        updateThemePreview()
     }
 
     override fun onDestroyView() {
@@ -492,6 +515,37 @@ class ConnectFragment : Fragment() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    // ==================== 主题 ====================
+
+    private fun applyTheme() {
+        if (!isAdded) return
+        val colors = ThemeManager.getColors(requireContext())
+        ThemeManager.applyToView(requireView(), colors)
+    }
+
+    private fun updateThemePreview() {
+        if (!isAdded) return
+        val colors = ThemeManager.getColors(requireContext())
+        val theme = ThemeManager.getThemeById(ThemeManager.loadThemeId(requireContext()))
+        val mode = ThemeManager.loadMode(requireContext())
+        val modeName = ThemeManager.MODES.find { it.key == mode }?.name ?: "暗夜"
+        themeCurrentName.text = "${theme.name} · $modeName"
+        previewGold.setBackgroundColor(Color.parseColor(colors.gold))
+        previewBg.setBackgroundColor(Color.parseColor(colors.bg))
+        previewBg2.setBackgroundColor(Color.parseColor(colors.bg2))
+        previewText.setBackgroundColor(Color.parseColor(colors.text))
+    }
+
+    private fun showThemeDialog() {
+        if (!isAdded) return
+        ThemeDialog.show(requireActivity()) {
+            applyTheme()
+            updateThemePreview()
+            // 通知 MainActivity 刷新
+            requireActivity().recreate()
         }
     }
 }

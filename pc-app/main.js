@@ -541,9 +541,9 @@ ipcMain.on('open-sms', (event, number) => {
   }
   smsWindow = new BrowserWindow({
     width: 400,
-    height: 500,
+    height: 580,
     minWidth: 320,
-    minHeight: 400,
+    minHeight: 480,
     frame: false,
     transparent: false,
     backgroundColor: '#111318',

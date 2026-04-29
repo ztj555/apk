@@ -207,12 +207,17 @@ class CallLogFragment : Fragment() {
 
         // 启动兜底轮询（30秒）
         pollHandler.postDelayed(pollRunnable, 30000)
+
+        // 应用主题
+        applyTheme()
+        updateDialModeBarUI()
     }
 
     override fun onResume() {
         super.onResume()
         loadCallLog()
         updateDialModeBarUI()
+        applyTheme()
     }
 
     override fun onDestroyView() {
@@ -249,16 +254,17 @@ class CallLogFragment : Fragment() {
 
     private fun updateDialModeBarUI() {
         if (!isAdded) return
+        val colors = ThemeManager.getColors(requireContext())
         val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
         val currentKey = prefs.getString("dial_mode", DialMode.ALTERNATE.key) ?: DialMode.ALTERNATE.key
         dialModeButtons.forEachIndexed { index, btn ->
             if (dialModeKeys[index] == currentKey) {
-                btn.setBackgroundColor(android.graphics.Color.parseColor("#C9A84C"))
-                btn.setTextColor(android.graphics.Color.parseColor("#111318"))
+                btn.setBackgroundColor(android.graphics.Color.parseColor(colors.gold))
+                btn.setTextColor(android.graphics.Color.parseColor(colors.bg))
                 btn.typeface = android.graphics.Typeface.DEFAULT_BOLD
             } else {
-                btn.setBackgroundColor(android.graphics.Color.parseColor("#22252E"))
-                btn.setTextColor(android.graphics.Color.parseColor("#A09070"))
+                btn.setBackgroundColor(android.graphics.Color.parseColor(colors.bg3))
+                btn.setTextColor(android.graphics.Color.parseColor(colors.text2))
                 btn.typeface = android.graphics.Typeface.DEFAULT
             }
         }
@@ -387,5 +393,11 @@ class CallLogFragment : Fragment() {
             emptyView.visibility = View.GONE
             recyclerView.adapter = CallLogAdapter(records)
         }
+    }
+
+    private fun applyTheme() {
+        if (!isAdded) return
+        val colors = ThemeManager.getColors(requireContext())
+        ThemeManager.applyToView(requireView(), colors)
     }
 }
