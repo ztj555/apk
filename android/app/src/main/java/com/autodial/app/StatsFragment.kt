@@ -87,6 +87,12 @@ class StatsFragment : Fragment() {
         applyTheme()
     }
 
+    fun onThemeChanged() {
+        if (!isAdded) return
+        applyTheme()
+        loadStats()  // 重新构建图表和列表，使用新主题颜色
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         refreshHandler.removeCallbacks(refreshRunnable)

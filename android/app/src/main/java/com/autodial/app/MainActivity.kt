@@ -119,6 +119,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // 从主题选择弹窗返回时刷新主题
         applyTheme()
+        // 通知所有 Fragment 刷新主题
+        notifyFragmentsThemeChanged()
     }
 
     /**
@@ -140,6 +142,20 @@ class MainActivity : AppCompatActivity() {
 
         // 应用颜色到 main layout
         ThemeManager.applyToView(findViewById<View>(android.R.id.content), colors)
+    }
+
+    /**
+     * 通知所有 Fragment 主题已变更，需要重新应用
+     */
+    fun notifyFragmentsThemeChanged() {
+        supportFragmentManager.fragments.forEach { frag ->
+            when (frag) {
+                is ConnectFragment -> frag.onThemeChanged()
+                is CallLogFragment -> frag.onThemeChanged()
+                is StatsFragment -> frag.onThemeChanged()
+            }
+        }
+        applyTheme()
     }
 
     override fun onDestroy() {

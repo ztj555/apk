@@ -257,6 +257,18 @@
     font-size: 12px;
     margin-bottom: 0;
   }
+  /* 显示模式两行grid */
+  .mode-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    width: 100%;
+    margin-top: 6px;
+  }
+  .mode-grid .select-option {
+    text-align: center;
+    margin-left: 0;
+  }
 
   .footer {
     text-align: center;
@@ -284,31 +296,6 @@
   </div>
 
   <div class="content">
-    <!-- 外观 -->
-    <div class="section-title">外观</div>
-
-    <div class="setting-item column">
-      <div class="setting-info" style="width:100%">
-        <div class="setting-label">主题</div>
-        <div class="setting-desc">选择界面风格和配色方案</div>
-      </div>
-      <div class="theme-grid" id="themeGrid"></div>
-      <div class="mode-row">
-        <div class="setting-label">显示模式</div>
-        <div class="select-group" id="modeSelect">
-          <div class="select-option active" data-value="dark">&#x1F311; 暗夜</div>
-          <div class="select-option" data-value="dusk">&#x1F306; 黄昏</div>
-          <div class="select-option" data-value="dawn">&#x1F305; 朝阳</div>
-          <div class="select-option" data-value="twilight">&#x1F307; 暮光</div>
-          <div class="select-option" data-value="warm">&#x1F324; 暖光</div>
-          <div class="select-option" data-value="mist">&#x1F325; 晨雾</div>
-          <div class="select-option" data-value="light">&#x2600; 亮白</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="spacer"></div>
-
     <!-- 窗口行为 -->
     <div class="section-title">窗口行为</div>
 
@@ -359,6 +346,31 @@
         <input type="checkbox" id="silentStart">
         <span class="sw-track"></span>
       </label>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- 外观 -->
+    <div class="section-title">外观</div>
+
+    <div class="setting-item column">
+      <div class="setting-info" style="width:100%">
+        <div class="setting-label">主题</div>
+        <div class="setting-desc">选择界面风格和配色方案</div>
+      </div>
+      <div class="theme-grid" id="themeGrid"></div>
+      <div class="mode-row">
+        <div class="setting-label">显示模式</div>
+        <div class="mode-grid" id="modeSelect">
+          <div class="select-option active" data-value="dark">&#x1F311; 暗夜</div>
+          <div class="select-option" data-value="dusk">&#x1F306; 黄昏</div>
+          <div class="select-option" data-value="dawn">&#x1F305; 朝阳</div>
+          <div class="select-option" data-value="twilight">&#x1F307; 暮光</div>
+          <div class="select-option" data-value="warm">&#x1F324; 暖光</div>
+          <div class="select-option" data-value="mist">&#x1F325; 晨雾</div>
+          <div class="select-option" data-value="light">&#x2600; 亮白</div>
+        </div>
+      </div>
     </div>
   </div>
 

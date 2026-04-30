@@ -298,6 +298,30 @@
   }
   .sms-btn:hover { background: rgba(201,168,76,0.1); border-color: var(--gold); }
 
+  /* 主界面快捷短信模板 */
+  .index-tpl-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 6px;
+  }
+  .index-tpl-tag {
+    background: var(--bg2);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-md);
+    padding: 4px 9px;
+    font-size: 11px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .index-tpl-tag:hover { border-color: var(--gold-dark); color: var(--gold); background: rgba(201,168,76,0.07); }
+  .index-tpl-tag:active { transform: scale(0.94); }
+
   /* ---- 日志区（折叠） ---- */
   .log-section { flex-shrink: 0; }
   .log-toggle {
@@ -432,6 +456,7 @@
     </div>
     <div class="sms-row">
       <button class="sms-btn" id="smsBtn">&#x1F4AC; 发短信</button>
+      <div class="index-tpl-list" id="indexTplList"></div>
     </div>
 
     <div class="log-section">
@@ -491,7 +516,8 @@ document.getElementById('callBtn').addEventListener('click', dial);
 document.getElementById('hangupBtn').addEventListener('click', hangup);
 document.getElementById('logToggle').addEventListener('click', toggleLog);
 document.getElementById('smsBtn').addEventListener('click', () => {
-  window.api.send('open-sms', '');
+  const number = document.getElementById('numberInput').value.trim().replace(/\s/g, '');
+  window.api.send('open-sms', number || '');
 });
 
 // ==================== 按钮状态文字 ====================
@@ -685,8 +711,46 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Backspace' && document.activeElement.id !== 'numberInput') deleteLast();
 });
 
+// ==================== 主界面快捷短信模板 ====================
+const INDEX_TPL_KEY = 'autodial_sms_templates';
+const INDEX_TPL_DEFAULTS = [
+  { id: 1, title: '回访问候', content: '您好，我是之前联系过您的客服，请问您对我们产品还有什么疑问吗？' },
+  { id: 2, title: '催办提醒', content: '您好，温馨提醒您，您的业务办理进度已更新，请及时查看。' },
+  { id: 3, title: '会议通知', content: '您好，我们将于明天上午10点召开线上会议，届时请准时参加。' },
+  { id: 4, title: '感谢回复', content: '感谢您的咨询与支持，如有其他问题随时联系我们，祝您生活愉快！' },
+  { id: 5, title: '节日祝福', content: '值此佳节来临之际，祝您及家人节日快乐，万事如意！' }
+];
+
+function indexLoadTemplates() {
+  try {
+    const raw = localStorage.getItem(INDEX_TPL_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(INDEX_TPL_DEFAULTS));
+}
+
+function renderIndexTemplates() {
+  const templates = indexLoadTemplates();
+  const container = document.getElementById('indexTplList');
+  container.innerHTML = '';
+  templates.forEach(tpl => {
+    const tag = document.createElement('div');
+    tag.className = 'index-tpl-tag';
+    tag.textContent = tpl.title;
+    tag.title = tpl.content;
+    tag.addEventListener('click', () => {
+      const number = document.getElementById('numberInput').value.trim().replace(/\s/g, '');
+      window.api.send('open-sms', { number: number || '', content: tpl.content });
+    });
+    container.appendChild(tag);
+  });
+}
+
 // 初始化主题
 if (typeof ThemeEngine !== 'undefined') ThemeEngine.initTheme();
+
+// 模板渲染（在init之前，localStorage立即可用）
+renderIndexTemplates();
 
 init();
 </script>

@@ -438,6 +438,7 @@
 
 let currentNumber = '';
 let isSending = false;
+let phoneConnected = false;
 
 // ==================== 标题栏 ====================
 document.getElementById('btnMinimize').addEventListener('click', () => {
@@ -455,6 +456,20 @@ window.api.on('sms-number', (number) => {
   if (number) {
     recipientInput.value = number;
   }
+  updateSendBtn();
+});
+
+// 接收预填内容（从主窗口模板点击触发）
+window.api.on('sms-content', (content) => {
+  if (content) {
+    smsContent.value = content;
+    smsContent.dispatchEvent(new Event('input'));
+  }
+});
+
+// 监听手机连接状态
+window.api.on('status-update', (data) => {
+  phoneConnected = !!data.connected;
   updateSendBtn();
 });
 
@@ -481,9 +496,15 @@ function updateSendBtn() {
   currentNumber = recipientInput.value.trim().replace(/\s/g, '');
   const hasContent = smsContent.value.trim().length > 0;
   const hasNumber = currentNumber.length > 0;
-  sendBtn.disabled = !(hasContent && hasNumber);
+  sendBtn.disabled = !(hasContent && hasNumber && phoneConnected);
   if (sendBtn.disabled) {
-    sendBtn.textContent = !hasNumber ? '\uD83D\uDCF1 \u8BF7\u8F93\u5165\u53F7\u7801' : '\u270D\uFE0F \u8BF7\u8F93\u5165\u5185\u5BB9';
+    if (!phoneConnected) {
+      sendBtn.textContent = '\uD83D\uDCF1 \u8BF7\u5148\u8FDE\u63A5\u624B\u673A';
+    } else if (!hasNumber) {
+      sendBtn.textContent = '\uD83D\uDCF1 \u8BF7\u8F93\u5165\u53F7\u7801';
+    } else {
+      sendBtn.textContent = '\u270D\uFE0F \u8BF7\u8F93\u5165\u5185\u5BB9';
+    }
   } else {
     sendBtn.innerHTML = '\uD83D\uDCE8 \u53D1\u9001';
   }

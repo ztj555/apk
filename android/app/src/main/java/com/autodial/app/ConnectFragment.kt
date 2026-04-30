@@ -270,10 +270,11 @@ class ConnectFragment : Fragment() {
                 }
 
                 if (discoveredIP.isEmpty()) {
+                    val colors3 = ThemeManager.getColors(requireContext())
                     pinInput.isEnabled = false
                     connectBtn.isEnabled = false
                     statusText.text = "正在搜索电脑..."
-                    statusText.setTextColor(Color.parseColor("#F0C040"))
+                    statusText.setTextColor(Color.parseColor(colors3.goldLight))
 
                     discoveryJob = CoroutineScope(Dispatchers.IO).launch {
                         var socket: java.net.DatagramSocket? = null
@@ -324,7 +325,8 @@ class ConnectFragment : Fragment() {
                                 } else {
                                     Toast.makeText(requireActivity(), "未找到电脑，请确保电脑端已打开且在同一WiFi下", Toast.LENGTH_LONG).show()
                                     statusText.text = "未找到电脑"
-                                    statusText.setTextColor(Color.parseColor("#A09070"))
+                                    val colors4 = ThemeManager.getColors(requireContext())
+                                    statusText.setTextColor(Color.parseColor(colors4.text2))
                                 }
                             }
                         } catch (_: Exception) {
@@ -347,18 +349,20 @@ class ConnectFragment : Fragment() {
     }
 
     private fun doConnect(ip: String, pin: String) {
+        val colors = ThemeManager.getColors(requireContext())
         pinInput.isEnabled = false
         connectBtn.isEnabled = false
         statusText.text = "正在连接 $ip ..."
-        statusText.setTextColor(Color.parseColor("#F0C040"))
+        statusText.setTextColor(Color.parseColor(colors.goldLight))
         statusDot.setImageResource(R.drawable.dot_gray)
 
         CoroutineScope(Dispatchers.Main).launch {
             delay(3000)
             if (!DialService.isConnected) {
-                statusText.text = "连接中，请稍候...（若长时间连不上，可能是电脑防火墙拦截）"
-                statusText.setTextColor(Color.parseColor("#E67E22"))
-            }
+                    val colors2 = ThemeManager.getColors(requireContext())
+                    statusText.text = "连接中，请稍候...（若长时间连不上，可能是电脑防火墙拦截）"
+                    statusText.setTextColor(Color.parseColor(colors2.gold))
+                }
         }
 
         val intent = Intent(requireActivity(), DialService::class.java).apply {
@@ -386,12 +390,13 @@ class ConnectFragment : Fragment() {
 
     private fun updateAutoConnectUI(enabled: Boolean) {
         if (!isAdded) return
+        val colors = ThemeManager.getColors(requireContext())
         if (enabled) {
             autoConnectSwitch.text = "开"
-            autoConnectSwitch.setBackgroundColor(Color.parseColor("#C9A84C"))
+            autoConnectSwitch.setBackgroundColor(Color.parseColor(colors.gold))
         } else {
             autoConnectSwitch.text = "关"
-            autoConnectSwitch.setBackgroundColor(Color.parseColor("#3A3D44"))
+            autoConnectSwitch.setBackgroundColor(Color.parseColor(colors.bg3))
         }
     }
 
@@ -446,13 +451,14 @@ class ConnectFragment : Fragment() {
     private fun updateConnectionUI(connected: Boolean, reason: String?) {
         try {
             if (!isAdded) return
+            val colors = ThemeManager.getColors(requireContext())
             pinInput.isEnabled = !connected
             connectBtn.isEnabled = true
 
             if (connected) {
                 statusDot.setImageResource(R.drawable.dot_green)
                 statusText.text = "已连接"
-                statusText.setTextColor(Color.parseColor("#2ECC71"))
+                statusText.setTextColor(Color.parseColor(colors.green))
                 connectionBanner.visibility = View.VISIBLE
                 bannerText.text = "✅ 已连接到电脑！等待拨号指令..."
                 discoveryHint.visibility = View.GONE
@@ -471,33 +477,33 @@ class ConnectFragment : Fragment() {
                 val connectTextView = requireView().findViewById<TextView>(R.id.connectBtnText)
                 connectTextView.text = "断开连接"
                 val connectBtnLayout = requireView().findViewById<LinearLayout>(R.id.connectBtn)
-                connectBtnLayout.setBackgroundColor(Color.parseColor("#E74C3C"))
+                connectBtnLayout.setBackgroundColor(Color.parseColor(colors.red))
             } else {
                 statusDot.setImageResource(R.drawable.dot_gray)
                 connectionBanner.visibility = View.GONE
                 foundPCInfo.visibility = View.GONE
 
                 val connectBtnLayout = requireView().findViewById<LinearLayout>(R.id.connectBtn)
-                connectBtnLayout.setBackgroundColor(Color.parseColor("#C9A84C"))
+                connectBtnLayout.setBackgroundColor(Color.parseColor(colors.gold))
                 val connectTextView = requireView().findViewById<TextView>(R.id.connectBtnText)
                 connectTextView.text = "连接"
 
                 when (reason) {
                     "pin_wrong" -> {
                         statusText.text = "配对码错误"
-                        statusText.setTextColor(Color.parseColor("#E74C3C"))
+                        statusText.setTextColor(Color.parseColor(colors.red))
                         Toast.makeText(requireActivity(), "配对码不正确，请重新输入！", Toast.LENGTH_LONG).show()
                         discoveryHint.text = "⚠️ 配对码错误，请重新输入"
                         discoveryHint.visibility = View.VISIBLE
                     }
                     "kicked" -> {
                         statusText.text = "已被踢下线"
-                        statusText.setTextColor(Color.parseColor("#E74C3C"))
+                        statusText.setTextColor(Color.parseColor(colors.red))
                         Toast.makeText(requireActivity(), "有其他手机连接了该电脑", Toast.LENGTH_LONG).show()
                     }
                     "connection_failed" -> {
                         statusText.text = "连接失败"
-                        statusText.setTextColor(Color.parseColor("#E74C3C"))
+                        statusText.setTextColor(Color.parseColor(colors.red))
                         Toast.makeText(requireActivity(), "无法连接到电脑，请检查：\n1. 电脑端是否已打开\n2. 手机和电脑是否在同一WiFi\n3. 电脑防火墙是否放行了端口", Toast.LENGTH_LONG).show()
                         discoveryHint.text = "⚠️ 连接失败，请检查电脑端是否已打开且在同一网络"
                         discoveryHint.visibility = View.VISIBLE
@@ -509,7 +515,7 @@ class ConnectFragment : Fragment() {
                     }
                     else -> {
                         statusText.text = "未连接"
-                        statusText.setTextColor(Color.parseColor("#A09070"))
+                        statusText.setTextColor(Color.parseColor(colors.text2))
                     }
                 }
             }
@@ -519,6 +525,16 @@ class ConnectFragment : Fragment() {
     }
 
     // ==================== 主题 ====================
+
+    fun onThemeChanged() {
+        if (!isAdded) return
+        applyTheme()
+        updateThemePreview()
+        updateConnectionUI(DialService.isConnected, null)
+        updateAutoConnectUI(requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
+            .getBoolean("auto_reconnect", true))
+        updateBatteryOptUI()
+    }
 
     private fun applyTheme() {
         if (!isAdded) return
@@ -544,8 +560,8 @@ class ConnectFragment : Fragment() {
         ThemeDialog.show(requireActivity()) {
             applyTheme()
             updateThemePreview()
-            // 通知 MainActivity 刷新
-            requireActivity().recreate()
+            // 通知 MainActivity 刷新所有 Fragment 的主题
+            (requireActivity() as? MainActivity)?.notifyFragmentsThemeChanged()
         }
     }
 }

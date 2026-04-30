@@ -125,6 +125,7 @@ let tray = null;
 let floatBarScale = 1.0;
 const FLOATBAR_MIN_SCALE = 0.7;
 const FLOATBAR_MAX_SCALE = 1.5;
+const FLOATBAR_MIN_W = 280;  // 最小宽度，防止内容挤压
 
 // 开机自启动（注册表方式，无需管理员权限）
 function setAutoStart(enable) {
@@ -344,7 +345,8 @@ function createFloatBarWindow() {
     y: initialY,
     frame: false,
     transparent: true,
-    resizable: false,
+    resizable: true,        // 必须 true，否则 setSize 无法缩小窗口
+    minimizable: false,     // 禁止最小化按钮（悬浮条不需要）
     skipTaskbar: true,
     alwaysOnTop: true,
     focusable: true,   // 必须为 true，否则鼠标事件无法触发（拖拽失效）
@@ -531,12 +533,20 @@ ipcMain.on('send-sms', (event, data) => {
 });
 
 // 打开短信编辑窗口
-ipcMain.on('open-sms', (event, number) => {
+// payload 可以是字符串（仅号码）或对象 {number, content}
+ipcMain.on('open-sms', (event, payload) => {
+  const number  = typeof payload === 'object' ? (payload.number  || '') : (payload || '');
+  const content = typeof payload === 'object' ? (payload.content || '') : '';
+
   if (smsWindow && !smsWindow.isDestroyed()) {
     smsWindow.show();
     smsWindow.focus();
-    // 传号码给短信窗口
+    // 传号码+内容+连接状态给短信窗口
     try { smsWindow.webContents.send('sms-number', number); } catch (e) {}
+    if (content) {
+      try { smsWindow.webContents.send('sms-content', content); } catch (e) {}
+    }
+    try { smsWindow.webContents.send('status-update', { connected: phoneSocket !== null, phoneIP: null }); } catch (e) {}
     return;
   }
   smsWindow = new BrowserWindow({
@@ -563,6 +573,9 @@ ipcMain.on('open-sms', (event, number) => {
     try {
       smsWindow.webContents.send('theme-changed', { theme: appSettings.theme, mode: appSettings.mode });
       smsWindow.webContents.send('sms-number', number);
+      if (content) smsWindow.webContents.send('sms-content', content);
+      // 同步手机连接状态
+      smsWindow.webContents.send('status-update', { connected: phoneSocket !== null, phoneIP: null });
     } catch (e) {}
   });
 });
@@ -635,7 +648,7 @@ ipcMain.on('floatbar-resize', (event, delta) => {
   if (floatBarScale === oldScale) return;
 
   const baseW = 440, baseH = 48;
-  const newW = Math.round(baseW * floatBarScale);
+  const newW = Math.max(FLOATBAR_MIN_W, Math.round(baseW * floatBarScale));
   const newH = Math.round(baseH * floatBarScale);
   floatBarWindow.setSize(newW, newH);
 });
@@ -814,7 +827,7 @@ wss.on('connection', (ws, req) => {
 
 function _notifyUIStatus(connected, phoneIP) {
   const data = { connected, phoneIP };
-  [mainWindow, floatBarWindow].forEach(win => {
+  [mainWindow, floatBarWindow, smsWindow].forEach(win => {
     if (win && !win.isDestroyed()) {
       try { win.webContents.send('status-update', data); } catch (e) {}
     }

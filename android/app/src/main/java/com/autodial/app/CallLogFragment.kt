@@ -30,7 +30,10 @@ data class PhoneCallRecord(
     val simSlot: Int   // 0=卡1, 1=卡2
 )
 
-class CallLogAdapter(private val records: List<PhoneCallRecord>) :
+class CallLogAdapter(
+    private val records: List<PhoneCallRecord>,
+    private val colors: ThemeColors
+) :
     RecyclerView.Adapter<CallLogAdapter.ViewHolder>() {
 
     private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
@@ -41,11 +44,14 @@ class CallLogAdapter(private val records: List<PhoneCallRecord>) :
         val callType: TextView = view.findViewById(R.id.itemCallType)
         val simSlot: TextView = view.findViewById(R.id.itemSimSlot)
         val callStatus: TextView = view.findViewById(R.id.itemCallStatus)
+        val root: View = view
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_call_log, parent, false)
+        // 应用主题到 item 的根布局
+        ThemeManager.applyToView(view, colors)
         return ViewHolder(view)
     }
 
@@ -76,37 +82,37 @@ class CallLogAdapter(private val records: List<PhoneCallRecord>) :
             CallLog.Calls.OUTGOING_TYPE -> {
                 if (record.duration > 0) {
                     holder.callStatus.text = formatDuration(record.duration)
-                    holder.callStatus.setTextColor(0xFF2ECC71.toInt())   // 绿色：接通
+                    holder.callStatus.setTextColor(android.graphics.Color.parseColor(colors.green))
                 } else {
                     holder.callStatus.text = "未接通"
-                    holder.callStatus.setTextColor(0xFFE74C3C.toInt())   // 红色：未接通
+                    holder.callStatus.setTextColor(android.graphics.Color.parseColor(colors.red))
                 }
             }
             CallLog.Calls.INCOMING_TYPE -> {
                 if (record.duration > 0) {
                     holder.callStatus.text = formatDuration(record.duration)
-                    holder.callStatus.setTextColor(0xFF2ECC71.toInt())
+                    holder.callStatus.setTextColor(android.graphics.Color.parseColor(colors.green))
                 } else {
                     holder.callStatus.text = "未接听"
-                    holder.callStatus.setTextColor(0xFFE74C3C.toInt())
+                    holder.callStatus.setTextColor(android.graphics.Color.parseColor(colors.red))
                 }
             }
             CallLog.Calls.MISSED_TYPE -> {
                 holder.callStatus.text = "未接"
-                holder.callStatus.setTextColor(0xFFE74C3C.toInt())
+                holder.callStatus.setTextColor(android.graphics.Color.parseColor(colors.red))
             }
             else -> {
                 holder.callStatus.text = "-"
-                holder.callStatus.setTextColor(0xFFA09070.toInt())
+                holder.callStatus.setTextColor(android.graphics.Color.parseColor(colors.text2))
             }
         }
 
         // SIM卡标识
         holder.simSlot.text = "卡${record.simSlot + 1}"
         if (record.simSlot == 1) {
-            holder.simSlot.setTextColor(0xFF2ECC71.toInt())
+            holder.simSlot.setTextColor(android.graphics.Color.parseColor(colors.green))
         } else {
-            holder.simSlot.setTextColor(0xFFC9A84C.toInt())
+            holder.simSlot.setTextColor(android.graphics.Color.parseColor(colors.gold))
         }
     }
 
@@ -218,6 +224,13 @@ class CallLogFragment : Fragment() {
         loadCallLog()
         updateDialModeBarUI()
         applyTheme()
+    }
+
+    fun onThemeChanged() {
+        if (!isAdded) return
+        applyTheme()
+        updateDialModeBarUI()
+        loadCallLog()  // 重新加载让 adapter 使用新主题颜色
     }
 
     override fun onDestroyView() {
@@ -391,7 +404,8 @@ class CallLogFragment : Fragment() {
         } else {
             recyclerView.visibility = View.VISIBLE
             emptyView.visibility = View.GONE
-            recyclerView.adapter = CallLogAdapter(records)
+            val colors = ThemeManager.getColors(requireContext())
+            recyclerView.adapter = CallLogAdapter(records, colors)
         }
     }
 
