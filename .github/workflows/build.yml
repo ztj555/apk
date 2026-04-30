@@ -53,3 +53,9 @@ jobs:
         with:
           name: AutoDial-APK-Release
           path: android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload Keystore
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoDial-Keystore
+          path: android/app/autodial-release.p12
