@@ -28,6 +28,14 @@ class StatsFragment : Fragment() {
     private lateinit var dateLabels: LinearLayout
     private lateinit var detailList: LinearLayout
 
+    // 主题变更监听
+    private val themeListener: () -> Unit = {
+        if (isAdded) {
+            applyTheme()
+            loadStats()
+        }
+    }
+
     private val newDialReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             refreshIfNeeded()
@@ -79,22 +87,24 @@ class StatsFragment : Fragment() {
 
         // 应用主题
         applyTheme()
+
+        // 注册主题变更监听
+        ThemeManager.addOnThemeChangedListener(themeListener)
     }
 
     override fun onResume() {
         super.onResume()
         refreshIfNeeded()
-        applyTheme()
     }
 
     fun onThemeChanged() {
-        if (!isAdded) return
-        applyTheme()
-        loadStats()  // 重新构建图表和列表，使用新主题颜色
+        // 主题变更由 themeListener 处理
+        themeListener()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        ThemeManager.removeOnThemeChangedListener(themeListener)
         refreshHandler.removeCallbacks(refreshRunnable)
         try { requireActivity().unregisterReceiver(newDialReceiver) } catch (_: Exception) {}
         try { requireActivity().unregisterReceiver(callEndedReceiver) } catch (_: Exception) {}

@@ -48,6 +48,17 @@ class ConnectFragment : Fragment() {
     private lateinit var previewBg2: View
     private lateinit var previewText: View
 
+    private val themeListener: () -> Unit = {
+        if (isAdded) {
+            applyTheme()
+            updateThemePreview()
+            updateConnectionUI(DialService.isConnected, null)
+            updateAutoConnectUI(requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
+                .getBoolean("auto_reconnect", true))
+            updateBatteryOptUI()
+        }
+    }
+
     private var discoveredIP = ""
     private var discoveryJob: Job? = null
 
@@ -132,6 +143,9 @@ class ConnectFragment : Fragment() {
             applyTheme()
             updateThemePreview()
 
+            // 注册主题变更监听
+            ThemeManager.addOnThemeChangedListener(themeListener)
+
             // 配对码输入变化时自动扫描
             pinInput.addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -166,13 +180,11 @@ class ConnectFragment : Fragment() {
             }
         } catch (_: Exception) {}
         if (isAdded) updateBatteryOptUI()
-        // 刷新主题
-        applyTheme()
-        updateThemePreview()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        ThemeManager.removeOnThemeChangedListener(themeListener)
         try { requireActivity().unregisterReceiver(receiver) } catch (_: Exception) {}
         stopDiscovery()
     }
@@ -510,7 +522,7 @@ class ConnectFragment : Fragment() {
                     }
                     "disconnected" -> {
                         statusText.text = "连接已断开"
-                        statusText.setTextColor(Color.parseColor("#E67E22"))
+                        statusText.setTextColor(Color.parseColor(colors.gold))
                         Toast.makeText(requireActivity(), "与电脑的连接已断开", Toast.LENGTH_SHORT).show()
                     }
                     else -> {
@@ -527,13 +539,8 @@ class ConnectFragment : Fragment() {
     // ==================== 主题 ====================
 
     fun onThemeChanged() {
-        if (!isAdded) return
-        applyTheme()
-        updateThemePreview()
-        updateConnectionUI(DialService.isConnected, null)
-        updateAutoConnectUI(requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
-            .getBoolean("auto_reconnect", true))
-        updateBatteryOptUI()
+        // 主题变更由 themeListener 处理，此方法保留兼容
+        themeListener()
     }
 
     private fun applyTheme() {
@@ -558,10 +565,13 @@ class ConnectFragment : Fragment() {
     private fun showThemeDialog() {
         if (!isAdded) return
         ThemeDialog.show(requireActivity()) {
-            applyTheme()
-            updateThemePreview()
-            // 通知 MainActivity 刷新所有 Fragment 的主题
-            (requireActivity() as? MainActivity)?.notifyFragmentsThemeChanged()
+            // 主题已通过 ThemeManager.saveTheme → notifyThemeChanged 自动刷新
+            // 这里只需刷新本 Fragment 的特殊状态
+            if (isAdded) {
+                updateConnectionUI(DialService.isConnected, null)
+                updateAutoConnectUI(requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
+                    .getBoolean("auto_reconnect", true))
+            }
         }
     }
 }

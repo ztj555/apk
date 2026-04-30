@@ -139,6 +139,15 @@ class CallLogFragment : Fragment() {
     private lateinit var dialModeButtons: List<TextView>
     private lateinit var dialModeKeys: List<String>
 
+    // 主题变更监听
+    private val themeListener: () -> Unit = {
+        if (isAdded) {
+            applyTheme()
+            updateDialModeBarUI()
+            loadCallLog()
+        }
+    }
+
     // 主刷新机制：监听通话结束广播，延迟1秒刷新
     private val callEndedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -217,24 +226,25 @@ class CallLogFragment : Fragment() {
         // 应用主题
         applyTheme()
         updateDialModeBarUI()
+
+        // 注册主题变更监听
+        ThemeManager.addOnThemeChangedListener(themeListener)
     }
 
     override fun onResume() {
         super.onResume()
         loadCallLog()
         updateDialModeBarUI()
-        applyTheme()
     }
 
     fun onThemeChanged() {
-        if (!isAdded) return
-        applyTheme()
-        updateDialModeBarUI()
-        loadCallLog()  // 重新加载让 adapter 使用新主题颜色
+        // 主题变更由 themeListener 处理
+        themeListener()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        ThemeManager.removeOnThemeChangedListener(themeListener)
         refreshHandler.removeCallbacks(refreshRunnable)
         pollHandler.removeCallbacks(pollRunnable)
         try { requireActivity().unregisterReceiver(callEndedReceiver) } catch (_: Exception) {}

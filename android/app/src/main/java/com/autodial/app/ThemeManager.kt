@@ -44,6 +44,28 @@ object ThemeManager {
     val DEFAULT_THEME_ID = "dark-gold"
     val DEFAULT_MODE = "dark"
 
+    // 主题变更监听器
+    private val listeners = mutableListOf<() -> Unit>()
+
+    fun addOnThemeChangedListener(listener: () -> Unit) {
+        if (!listeners.contains(listener)) {
+            listeners.add(listener)
+        }
+    }
+
+    fun removeOnThemeChangedListener(listener: () -> Unit) {
+        listeners.remove(listener)
+    }
+
+    /**
+     * 通知所有注册的监听器主题已变更
+     */
+    private fun notifyThemeChanged() {
+        listeners.toList().forEach { listener ->
+            try { listener() } catch (_: Exception) {}
+        }
+    }
+
     data class ModeInfo(val key: String, val name: String, val icon: String)
 
     val MODES: List<ModeInfo> = listOf(
@@ -238,6 +260,8 @@ object ThemeManager {
             .putString(KEY_THEME_ID, themeId)
             .putString(KEY_MODE, mode)
             .apply()
+        // 通知所有监听器主题已变更
+        notifyThemeChanged()
     }
 
     fun loadThemeId(context: Context): String {

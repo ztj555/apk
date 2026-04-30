@@ -68,6 +68,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val themeListener: () -> Unit = {
+        applyTheme()
+        switchTab(viewPager.currentItem)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -79,6 +84,9 @@ class MainActivity : AppCompatActivity() {
         tabConnectLabel = findViewById(R.id.tabConnectLabel)
         tabCallLogLabel = findViewById(R.id.tabCallLogLabel)
         tabStatsLabel = findViewById(R.id.tabStatsLabel)
+
+        // 注册主题变更监听
+        ThemeManager.addOnThemeChangedListener(themeListener)
 
         // 设置 ViewPager 适配器
         viewPager.adapter = ViewPagerAdapter(this, fragments)
@@ -117,10 +125,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 从主题选择弹窗返回时刷新主题
-        applyTheme()
-        // 通知所有 Fragment 刷新主题
-        notifyFragmentsThemeChanged()
+        // 主题变更已由 ThemeManager 监听器处理，这里只需确保当前状态正确
     }
 
     /**
@@ -145,21 +150,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 通知所有 Fragment 主题已变更，需要重新应用
+     * 通知所有 Fragment 主题已变更（保留兼容，Fragment 已有各自监听器）
      */
     fun notifyFragmentsThemeChanged() {
-        supportFragmentManager.fragments.forEach { frag ->
-            when (frag) {
-                is ConnectFragment -> frag.onThemeChanged()
-                is CallLogFragment -> frag.onThemeChanged()
-                is StatsFragment -> frag.onThemeChanged()
-            }
-        }
-        applyTheme()
+        // Fragment 各自有 ThemeManager 监听器，无需手动通知
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        ThemeManager.removeOnThemeChangedListener(themeListener)
         try { unregisterReceiver(connectionReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(simSelectReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(smsConfirmReceiver) } catch (_: Exception) {}
