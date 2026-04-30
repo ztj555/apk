@@ -19,10 +19,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Create gradle wrapper
-        working-directory: android
+      - name: Decode Keystore
         run: |
-          gradle wrapper --gradle-version 8.4
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/autodial-release.p12
+          echo "KEYSTORE_FILE=autodial-release.p12" >> $GITHUB_ENV
+          echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+          echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
 
       - name: Build Debug APK
         working-directory: android
@@ -42,4 +45,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AutoDial-APK-Release
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
