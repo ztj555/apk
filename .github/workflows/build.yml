@@ -30,6 +30,10 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
 
+      - name: Generate Gradle Wrapper
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.2
+
       - name: Build Debug APK
         working-directory: android
         run: ./gradlew assembleDebug
