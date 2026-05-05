@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AutoDial</string>
+    <string name="app_name">跨屏拨号</string>
     <string name="channel_name">AutoDial 通知</string>
     <string name="channel_desc">保持连接和拨号通知</string>
 </resources>
