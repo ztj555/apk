@@ -1,18 +1,22 @@
 package com.autodial.app
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.database.Cursor
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.CallLog
+import android.telecom.TelecomManager
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -32,7 +36,8 @@ data class PhoneCallRecord(
 
 class CallLogAdapter(
     private val records: List<PhoneCallRecord>,
-    private val colors: ThemeColors
+    private val colors: ThemeColors,
+    private val onLongClick: (PhoneCallRecord) -> Unit
 ) :
     RecyclerView.Adapter<CallLogAdapter.ViewHolder>() {
 
@@ -71,9 +76,9 @@ class CallLogAdapter(
 
         // 通话类型图标
         holder.callType.text = when (record.type) {
-            CallLog.Calls.OUTGOING_TYPE -> "📞"
+            CallLog.Calls.OUTGOING_TYPE -> "📤"
             CallLog.Calls.INCOMING_TYPE -> "📥"
-            CallLog.Calls.MISSED_TYPE -> "❌"
+            CallLog.Calls.MISSED_TYPE -> "📵"
             else -> "📞"
         }
 
@@ -114,6 +119,12 @@ class CallLogAdapter(
         } else {
             holder.simSlot.setTextColor(android.graphics.Color.parseColor(colors.gold))
         }
+
+        // 长按弹出操作菜单
+        holder.root.setOnLongClickListener {
+            onLongClick(record)
+            true
+        }
     }
 
     private fun formatDuration(seconds: Long): String {
@@ -135,6 +146,10 @@ class CallLogFragment : Fragment() {
     private lateinit var lastCallHintBanner: View
     private lateinit var lastCallHintText: TextView
 
+    // 连接状态
+    private lateinit var connectionStatusDot: ImageView
+    private lateinit var connectionStatusText: TextView
+
     // 拨号模式按钮
     private lateinit var dialModeButtons: List<TextView>
     private lateinit var dialModeKeys: List<String>
@@ -145,6 +160,14 @@ class CallLogFragment : Fragment() {
             applyTheme()
             updateDialModeBarUI()
             loadCallLog()
+        }
+    }
+
+    // 连接状态变更广播监听
+    private val connectionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val connected = intent?.getBooleanExtra("connected", false) ?: false
+            if (isAdded) updateConnectionStatus(connected)
         }
     }
 
@@ -164,19 +187,11 @@ class CallLogFragment : Fragment() {
             if (isAdded) {
                 lastCallHintText.text = hint
                 lastCallHintBanner.visibility = View.VISIBLE
-                // 10秒后自动消失
-                refreshHandler.postDelayed({ lastCallHintBanner.visibility = View.GONE }, 10000)
+                // 10秒后自动隐藏
+                refreshHandler.postDelayed({
+                    if (isAdded) lastCallHintBanner.visibility = View.GONE
+                }, 10_000)
             }
-        }
-    }
-
-    // 兜底轮询：30秒检查一次，防止遗漏（如App刚打开错过了广播）
-    private var lastKnownDate: Long = 0L
-    private val pollHandler = Handler(Looper.getMainLooper())
-    private val pollRunnable = object : Runnable {
-        override fun run() {
-            checkAndRefresh()
-            pollHandler.postDelayed(this, 30000)
         }
     }
 
@@ -189,71 +204,22 @@ class CallLogFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
         recyclerView = view.findViewById(R.id.callLogRecyclerView)
         emptyView = view.findViewById(R.id.callLogEmpty)
         countText = view.findViewById(R.id.callLogCount)
         permissionHint = view.findViewById(R.id.callLogPermissionHint)
         lastCallHintBanner = view.findViewById(R.id.lastCallHintBanner)
         lastCallHintText = view.findViewById(R.id.lastCallHintText)
+        connectionStatusDot = view.findViewById(R.id.connectionStatusDot)
+        connectionStatusText = view.findViewById(R.id.connectionStatusText)
 
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
-        // 拨号模式栏初始化
-        initDialModeBar(view)
+        // 初始化连接状态（根据 DialService 当前状态）
+        updateConnectionStatus(DialService.isConnected)
 
-        // 注册通话结束广播
-        try {
-            ContextCompat.registerReceiver(requireActivity(), callEndedReceiver,
-                IntentFilter("com.autodial.CALL_ENDED"),
-                ContextCompat.RECEIVER_EXPORTED
-            )
-        } catch (_: Exception) {}
-
-        // 注册上次通话提示广播
-        try {
-            ContextCompat.registerReceiver(requireActivity(), lastCallHintReceiver,
-                IntentFilter("com.autodial.LAST_CALL_HINT"),
-                ContextCompat.RECEIVER_EXPORTED
-            )
-        } catch (_: Exception) {}
-
-        // 首次加载
-        loadCallLog()
-
-        // 启动兜底轮询（30秒）
-        pollHandler.postDelayed(pollRunnable, 30000)
-
-        // 应用主题
-        applyTheme()
-        updateDialModeBarUI()
-
-        // 注册主题变更监听
-        ThemeManager.addOnThemeChangedListener(themeListener)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        loadCallLog()
-        updateDialModeBarUI()
-    }
-
-    fun onThemeChanged() {
-        // 主题变更由 themeListener 处理
-        themeListener()
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        ThemeManager.removeOnThemeChangedListener(themeListener)
-        refreshHandler.removeCallbacks(refreshRunnable)
-        pollHandler.removeCallbacks(pollRunnable)
-        try { requireActivity().unregisterReceiver(callEndedReceiver) } catch (_: Exception) {}
-        try { requireActivity().unregisterReceiver(lastCallHintReceiver) } catch (_: Exception) {}
-    }
-
-    // ==================== 拨号模式切换 ====================
-
-    private fun initDialModeBar(view: View) {
+        // 拨号模式按钮
         dialModeButtons = listOf(
             view.findViewById(R.id.dialModePopup),
             view.findViewById(R.id.dialModeRoundSelect),
@@ -262,81 +228,153 @@ class CallLogFragment : Fragment() {
             view.findViewById(R.id.dialModeAlternate),
             view.findViewById(R.id.dialModeRemember)
         )
-        dialModeKeys = DialMode.entries.map { it.key }
+        dialModeKeys = listOf(
+            DialMode.POPUP.key,
+            DialMode.ROUND_SELECT.key,
+            DialMode.SIM1.key,
+            DialMode.SIM2.key,
+            DialMode.ALTERNATE.key,
+            DialMode.REMEMBER.key
+        )
 
         dialModeButtons.forEachIndexed { index, btn ->
             btn.setOnClickListener {
-                val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
-                prefs.edit().putString("dial_mode", dialModeKeys[index]).apply()
+                requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
+                    .edit().putString("dial_mode", dialModeKeys[index]).apply()
                 updateDialModeBarUI()
-                Toast.makeText(requireActivity(), "已切换为：${DialMode.entries[index].label}模式", Toast.LENGTH_SHORT).show()
             }
         }
+
+        // 注册广播
+        ContextCompat.registerReceiver(
+            requireContext(),
+            callEndedReceiver,
+            IntentFilter("com.autodial.CALL_ENDED"),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        ContextCompat.registerReceiver(
+            requireContext(),
+            lastCallHintReceiver,
+            IntentFilter("com.autodial.LAST_CALL_HINT"),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        ContextCompat.registerReceiver(
+            requireContext(),
+            connectionReceiver,
+            IntentFilter("com.autodial.CONNECTION_CHANGE"),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+
+        // 主题监听
+        ThemeManager.addOnThemeChangedListener(themeListener)
+
+        applyTheme()
         updateDialModeBarUI()
+        loadCallLog()
     }
 
-    private fun updateDialModeBarUI() {
-        if (!isAdded) return
-        val colors = ThemeManager.getColors(requireContext())
-        val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
-        val currentKey = prefs.getString("dial_mode", DialMode.ALTERNATE.key) ?: DialMode.ALTERNATE.key
-        dialModeButtons.forEachIndexed { index, btn ->
-            if (dialModeKeys[index] == currentKey) {
-                btn.setBackgroundColor(android.graphics.Color.parseColor(colors.gold))
-                btn.setTextColor(android.graphics.Color.parseColor(colors.bg))
-                btn.typeface = android.graphics.Typeface.DEFAULT_BOLD
-            } else {
-                btn.setBackgroundColor(android.graphics.Color.parseColor(colors.bg3))
-                btn.setTextColor(android.graphics.Color.parseColor(colors.text2))
-                btn.typeface = android.graphics.Typeface.DEFAULT
-            }
-        }
+    override fun onDestroyView() {
+        super.onDestroyView()
+        refreshHandler.removeCallbacks(refreshRunnable)
+        ThemeManager.removeOnThemeChangedListener(themeListener)
+        try { requireContext().unregisterReceiver(callEndedReceiver) } catch (_: Exception) {}
+        try { requireContext().unregisterReceiver(lastCallHintReceiver) } catch (_: Exception) {}
+        try { requireContext().unregisterReceiver(connectionReceiver) } catch (_: Exception) {}
     }
 
     fun refreshIfNeeded() {
-        if (isAdded && !isDetached) {
+        if (isAdded) {
+            updateConnectionStatus(DialService.isConnected)
             loadCallLog()
         }
     }
 
-    /**
-     * 兜底轮询：只查最新一条记录的日期，和 lastKnownDate 比较
-     */
-    private fun checkAndRefresh() {
+    // ==================== 连接状态 ====================
+
+    private fun updateConnectionStatus(connected: Boolean) {
         if (!isAdded) return
+        val colors = ThemeManager.getColors(requireContext())
+        if (connected) {
+            connectionStatusDot.setImageResource(R.drawable.dot_green)
+            connectionStatusText.text = "已连接"
+            connectionStatusText.setTextColor(android.graphics.Color.parseColor(colors.green))
+        } else {
+            connectionStatusDot.setImageResource(R.drawable.dot_gray)
+            connectionStatusText.text = "未连接"
+            connectionStatusText.setTextColor(android.graphics.Color.parseColor(colors.text2))
+        }
+    }
 
-        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_CALL_LOG)
-            != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+    // ==================== 长按操作菜单 ====================
 
-        try {
-            @Suppress("DEPRECATION")
-            val cursor: Cursor? = requireActivity().contentResolver.query(
-                CallLog.Calls.CONTENT_URI,
-                arrayOf(CallLog.Calls.DATE),
-                null, null,
-                "${CallLog.Calls.DATE} DESC"
-            )
-            cursor?.use {
-                if (it.moveToFirst()) {
-                    val latestDate = it.getLong(it.getColumnIndex(CallLog.Calls.DATE))
-                    if (latestDate != lastKnownDate) {
-                        loadCallLog()
-                    }
+    private fun showCallRecordMenu(record: PhoneCallRecord) {
+        if (!isAdded) return
+        val colors = ThemeManager.getColors(requireContext())
+        val num = record.number
+
+        // 完整号码（用于实际操作，不脱敏）
+        val displayNum = if (num.length > 7) {
+            num.substring(0, 3) + "****" + num.substring(num.length - 4)
+        } else num
+
+        val items = arrayOf("📞 重拨  $displayNum", "💬 发短信给  $displayNum")
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> redialNumber(num)
+                    1 -> sendSmsTo(num)
                 }
             }
+            .create()
+
+        // 应用主题背景色
+        dialog.show()
+        try {
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            dialog.listView?.setBackgroundColor(android.graphics.Color.parseColor(colors.bg2))
+            dialog.listView?.dividerHeight = 0
         } catch (_: Exception) {}
     }
 
-    private fun loadCallLog() {
-        if (!isAdded) return
+    private fun redialNumber(number: String) {
+        try {
+            val intent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:$number")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "拨号失败：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
 
-        // 检查权限
-        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_CALL_LOG)
-            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+    private fun sendSmsTo(number: String) {
+        try {
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("smsto:$number")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "打开短信失败：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // ==================== 通话记录加载 ====================
+
+    fun loadCallLog() {
+        if (!isAdded) return
+        val ctx = requireContext()
+
+        val hasPermission = ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CALL_LOG) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!hasPermission) {
             permissionHint.visibility = View.VISIBLE
             recyclerView.visibility = View.GONE
             emptyView.visibility = View.GONE
-            countText.text = "需要权限"
+            countText.text = "无权限"
             return
         }
 
@@ -345,8 +383,7 @@ class CallLogFragment : Fragment() {
         val records = mutableListOf<PhoneCallRecord>()
 
         try {
-            @Suppress("DEPRECATION")
-            val cursor: Cursor? = requireActivity().contentResolver.query(
+            val cursor: Cursor? = ctx.contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
                 arrayOf(
                     CallLog.Calls.NUMBER,
@@ -360,68 +397,90 @@ class CallLogFragment : Fragment() {
             )
 
             cursor?.use {
-                val numberIdx = it.getColumnIndex(CallLog.Calls.NUMBER)
+                val numIdx = it.getColumnIndex(CallLog.Calls.NUMBER)
                 val dateIdx = it.getColumnIndex(CallLog.Calls.DATE)
-                val durationIdx = it.getColumnIndex(CallLog.Calls.DURATION)
+                val durIdx = it.getColumnIndex(CallLog.Calls.DURATION)
                 val typeIdx = it.getColumnIndex(CallLog.Calls.TYPE)
-                val simIdx = it.getColumnIndex(CallLog.Calls.PHONE_ACCOUNT_ID)
+                val subIdIdx = it.getColumnIndex(CallLog.Calls.PHONE_ACCOUNT_ID)
 
-                val subscriptionManager = try {
-                    requireActivity().getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE)
-                            as? android.telephony.SubscriptionManager
-                } catch (e: Exception) { null }
-
-                val simInfoList = try {
+                // 获取 SIM 卡订阅列表（用于 subId → slotIndex 映射）
+                val simList = try {
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP_MR1) {
-                        subscriptionManager?.activeSubscriptionInfoList
-                    } else null
-                } catch (e: Exception) { null }
+                        val sm = ctx.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? android.telephony.SubscriptionManager
+                        sm?.activeSubscriptionInfoList?.filterNotNull() ?: emptyList()
+                    } else emptyList()
+                } catch (_: Exception) { emptyList() }
 
-                while (it.moveToNext() && records.size < 100) {
-                    val number = it.getString(numberIdx) ?: continue
-                    val time = it.getLong(dateIdx)
-                    val duration = it.getLong(durationIdx)
+                while (it.moveToNext() && records.size < 200) {
+                    val num = it.getString(numIdx) ?: continue
+                    val date = it.getLong(dateIdx)
+                    val dur = it.getLong(durIdx)
                     val type = it.getInt(typeIdx)
-                    val subId = it.getString(simIdx)
+                    val subId = it.getString(subIdIdx)
 
                     var simSlot = 0
-                    if (subId != null && simInfoList != null) {
-                        for (info in simInfoList) {
+                    try {
+                        for (info in simList) {
                             if (info.subscriptionId.toString() == subId) {
                                 simSlot = info.simSlotIndex
                                 break
                             }
                         }
-                    }
+                    } catch (_: Exception) {}
 
-                    records.add(PhoneCallRecord(number, time, duration, type, simSlot))
+                    records.add(PhoneCallRecord(num, date, dur, type, simSlot))
                 }
             }
         } catch (e: Exception) {
-            Toast.makeText(requireContext(), "读取通话记录失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, "读取通话记录失败", Toast.LENGTH_SHORT).show()
         }
 
-        // 记录最新一条的日期用于轮询比对
-        if (records.isNotEmpty()) {
-            lastKnownDate = records[0].time
-        }
-
-        countText.text = "${records.size} 条记录"
+        val colors = ThemeManager.getColors(ctx)
 
         if (records.isEmpty()) {
             recyclerView.visibility = View.GONE
             emptyView.visibility = View.VISIBLE
+            countText.text = "0 条记录"
         } else {
             recyclerView.visibility = View.VISIBLE
             emptyView.visibility = View.GONE
-            val colors = ThemeManager.getColors(requireContext())
-            recyclerView.adapter = CallLogAdapter(records, colors)
+            countText.text = "${records.size} 条记录"
+            recyclerView.adapter = CallLogAdapter(records, colors) { record ->
+                showCallRecordMenu(record)
+            }
         }
+    }
+
+    // ==================== 拨号模式 UI ====================
+
+    fun updateDialModeBarUI() {
+        if (!isAdded) return
+        val colors = ThemeManager.getColors(requireContext())
+        val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
+        val currentMode = prefs.getString("dial_mode", DialMode.ALTERNATE.key) ?: DialMode.ALTERNATE.key
+
+        dialModeButtons.forEachIndexed { index, btn ->
+            val isSelected = dialModeKeys[index] == currentMode
+            if (isSelected) {
+                btn.setBackgroundColor(android.graphics.Color.parseColor(colors.gold))
+                btn.setTextColor(android.graphics.Color.parseColor(colors.bg))
+            } else {
+                btn.setBackgroundColor(android.graphics.Color.parseColor(colors.bg3))
+                btn.setTextColor(android.graphics.Color.parseColor(colors.text2))
+            }
+        }
+    }
+
+    // ==================== 主题 ====================
+
+    fun onThemeChanged() {
+        themeListener()
     }
 
     private fun applyTheme() {
         if (!isAdded) return
         val colors = ThemeManager.getColors(requireContext())
         ThemeManager.applyToView(requireView(), colors)
+        updateConnectionStatus(DialService.isConnected)
     }
 }
