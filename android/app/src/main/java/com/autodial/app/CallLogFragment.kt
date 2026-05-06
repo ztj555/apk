@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.ContentObserver
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
@@ -13,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.CallLog
 import android.telecom.TelecomManager
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -139,6 +141,10 @@ class CallLogAdapter(
 
 class CallLogFragment : Fragment() {
 
+    companion object {
+        private const val TAG = "CallLogFragment"
+    }
+
     private lateinit var recyclerView: RecyclerView
     private lateinit var emptyView: View
     private lateinit var countText: TextView
@@ -150,6 +156,13 @@ class CallLogFragment : Fragment() {
     private lateinit var connectionStatusDot: ImageView
     private lateinit var connectionStatusText: TextView
 
+    // 当前显示的数据指纹，用于去重刷新
+    private var lastDataFingerprint: String = ""
+
+    // 防报：最短刷新间隔（毫秒）
+    private var lastRefreshTime: Long = 0
+    private val MIN_REFRESH_INTERVAL = 300L
+
     // 拨号模式按钮
     private lateinit var dialModeButtons: List<TextView>
     private lateinit var dialModeKeys: List<String>
@@ -159,7 +172,7 @@ class CallLogFragment : Fragment() {
         if (isAdded) {
             applyTheme()
             updateDialModeBarUI()
-            loadCallLog()
+            forceLoadCallLog()
         }
     }
 
@@ -171,12 +184,24 @@ class CallLogFragment : Fragment() {
         }
     }
 
-    // 主刷新机制：监听通话结束广播，延迟1秒刷新
+    // 通话结束广播：多段延迟刷新
     private val callEndedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // 通话结束后系统需要一点时间写入通话记录，延迟1秒再刷新
-            refreshHandler.removeCallbacks(refreshRunnable)
-            refreshHandler.postDelayed(refreshRunnable, 1000)
+            Log.d(TAG, "收到通话结束广播，启动多段延迟刷新")
+            cancelPendingRefreshes()
+            scheduleRefresh(1000)
+            scheduleRefresh(3000)
+            scheduleRefresh(5000)
+        }
+    }
+
+    // APP 拨号完成广播：立即刷新
+    private val newDialReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d(TAG, "收到APP拨号完成广播，立即刷新")
+            cancelPendingRefreshes()
+            scheduleRefresh(500)
+            scheduleRefresh(3000)
         }
     }
 
@@ -195,8 +220,17 @@ class CallLogFragment : Fragment() {
         }
     }
 
+    // ==================== ContentObserver：监听系统通话记录数据库变化 ====================
+    private val callLogObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            Log.d(TAG, "通话记录数据库变化，延迟0.5秒刷新")
+            scheduleRefresh(500)
+            scheduleRefresh(3000)
+        }
+    }
+
     private val refreshHandler = Handler(Looper.getMainLooper())
-    private val refreshRunnable = Runnable { loadCallLog() }
+    private val refreshRunnable = Runnable { smartLoadCallLog() }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_call_log, container, false)
@@ -254,6 +288,12 @@ class CallLogFragment : Fragment() {
         )
         ContextCompat.registerReceiver(
             requireContext(),
+            newDialReceiver,
+            IntentFilter("com.autodial.NEW_DIAL"),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        ContextCompat.registerReceiver(
+            requireContext(),
             lastCallHintReceiver,
             IntentFilter("com.autodial.LAST_CALL_HINT"),
             ContextCompat.RECEIVER_NOT_EXPORTED
@@ -265,21 +305,35 @@ class CallLogFragment : Fragment() {
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
 
+        // 注册 ContentObserver
+        try {
+            requireContext().contentResolver.registerContentObserver(
+                CallLog.Calls.CONTENT_URI,
+                true,
+                callLogObserver
+            )
+            Log.d(TAG, "已注册通话记录 ContentObserver")
+        } catch (e: Exception) {
+            Log.e(TAG, "注册 ContentObserver 失败: ${e.message}")
+        }
+
         // 主题监听
         ThemeManager.addOnThemeChangedListener(themeListener)
 
         applyTheme()
         updateDialModeBarUI()
-        loadCallLog()
+        forceLoadCallLog()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        refreshHandler.removeCallbacks(refreshRunnable)
+        cancelPendingRefreshes()
         ThemeManager.removeOnThemeChangedListener(themeListener)
         try { requireContext().unregisterReceiver(callEndedReceiver) } catch (_: Exception) {}
+        try { requireContext().unregisterReceiver(newDialReceiver) } catch (_: Exception) {}
         try { requireContext().unregisterReceiver(lastCallHintReceiver) } catch (_: Exception) {}
         try { requireContext().unregisterReceiver(connectionReceiver) } catch (_: Exception) {}
+        try { requireContext().contentResolver.unregisterContentObserver(callLogObserver) } catch (_: Exception) {}
     }
 
     fun refreshIfNeeded() {
@@ -287,6 +341,31 @@ class CallLogFragment : Fragment() {
             updateConnectionStatus(DialService.isConnected)
             loadCallLog()
         }
+    }
+
+    // ==================== 刷新调度 ====================
+
+    private fun scheduleRefresh(delayMs: Long) {
+        refreshHandler.postDelayed(refreshRunnable, delayMs)
+    }
+
+    private fun cancelPendingRefreshes() {
+        refreshHandler.removeCallbacks(refreshRunnable)
+    }
+
+    private fun smartLoadCallLog() {
+        if (!isAdded) return
+        val now = System.currentTimeMillis()
+        if (now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
+            refreshHandler.postDelayed(refreshRunnable, MIN_REFRESH_INTERVAL)
+            return
+        }
+        loadCallLog()
+    }
+
+    private fun forceLoadCallLog() {
+        if (!isAdded) return
+        loadCallLog()
     }
 
     // ==================== 连接状态 ====================
@@ -435,6 +514,15 @@ class CallLogFragment : Fragment() {
             Toast.makeText(ctx, "读取通话记录失败", Toast.LENGTH_SHORT).show()
         }
 
+        val fingerprint = buildFingerprint(records)
+        if (fingerprint == lastDataFingerprint && fingerprint.isNotEmpty()) {
+            Log.d(TAG, "数据未变化，跳过UI刷新")
+            lastRefreshTime = System.currentTimeMillis()
+            return
+        }
+        lastDataFingerprint = fingerprint
+        lastRefreshTime = System.currentTimeMillis()
+
         val colors = ThemeManager.getColors(ctx)
 
         if (records.isEmpty()) {
@@ -449,6 +537,18 @@ class CallLogFragment : Fragment() {
                 showCallRecordMenu(record)
             }
         }
+    }
+
+    private fun buildFingerprint(records: List<PhoneCallRecord>): String {
+        if (records.isEmpty()) return ""
+        val sb = StringBuilder()
+        val count = minOf(records.size, 10)
+        for (i in 0 until count) {
+            val r = records[i]
+            sb.append(r.number).append("|").append(r.time).append("|")
+                .append(r.duration).append("|").append(r.type).append(";")
+        }
+        return sb.toString()
     }
 
     // ==================== 拨号模式 UI ====================
