@@ -41,8 +41,8 @@ object ThemeManager {
     private const val KEY_THEME_ID = "theme_id"
     private const val KEY_MODE = "theme_mode"
 
-    val DEFAULT_THEME_ID = "dark-gold"
-    val DEFAULT_MODE = "dark"
+    val DEFAULT_THEME_ID = "minimalist"
+    val DEFAULT_MODE = "light"
 
     // 主题变更监听器
     private val listeners = mutableListOf<() -> Unit>()

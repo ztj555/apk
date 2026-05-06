@@ -457,7 +457,7 @@ class CallLogFragment : Fragment() {
         if (!isAdded) return
         val colors = ThemeManager.getColors(requireContext())
         val prefs = requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
-        val currentMode = prefs.getString("dial_mode", DialMode.ALTERNATE.key) ?: DialMode.ALTERNATE.key
+        val currentMode = prefs.getString("dial_mode", DialMode.POPUP.key) ?: DialMode.POPUP.key
 
         dialModeButtons.forEachIndexed { index, btn ->
             val isSelected = dialModeKeys[index] == currentMode

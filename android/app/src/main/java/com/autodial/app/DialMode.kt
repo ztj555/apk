@@ -19,6 +19,6 @@ enum class DialMode(val label: String, val key: String) {
 
     companion object {
         fun fromKey(key: String): DialMode =
-            entries.firstOrNull { it.key == key } ?: ALTERNATE
+            entries.firstOrNull { it.key == key } ?: POPUP
     }
 }

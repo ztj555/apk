@@ -401,7 +401,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:layout_marginBottom="24dp"
-            android:text="AutoDial v3.1\n请确保手机和电脑在同一WiFi下"
+            android:text="跨屏拨号 v3.2\n请确保手机和电脑在同一WiFi下"
             android:textSize="12sp"
             android:tag="text2"
             android:textColor="#605040"

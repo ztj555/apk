@@ -7,6 +7,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -95,7 +97,7 @@ class DialService : Service() {
             isRunning = true
             callLogDb = CallLogDb(this)
             createNotificationChannel()
-            startForeground(NOTIFICATION_ID, buildNotification("AutoDial 运行中"))
+            startForeground(NOTIFICATION_ID, buildNotification("跨屏拨号 运行中"))
 
             // 保持CPU唤醒，防止MIUI杀掉后台WebSocket连接
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -132,7 +134,7 @@ class DialService : Service() {
             isRunning = true
             callLogDb = CallLogDb(this)
             createNotificationChannel()
-            try { startForeground(NOTIFICATION_ID, buildNotification("AutoDial 运行中")) } catch (_: Exception) {}
+            try { startForeground(NOTIFICATION_ID, buildNotification("跨屏拨号 运行中")) } catch (_: Exception) {}
         }
     }
 
@@ -358,7 +360,7 @@ class DialService : Service() {
         webSocket = null; isConnected = false
         _sendResult = null
         _webSocketRef = null
-        updateNotification("AutoDial 运行中")
+        updateNotification("跨屏拨号 运行中")
     }
 
     // ==================== 通话状态监听 ====================
@@ -449,7 +451,7 @@ class DialService : Service() {
      */
     private fun resolveSimSlot(number: String): Int {
         val prefs = getSharedPreferences("autodial", MODE_PRIVATE)
-        val modeKey = prefs.getString("dial_mode", DialMode.ALTERNATE.key) ?: DialMode.ALTERNATE.key
+        val modeKey = prefs.getString("dial_mode", DialMode.POPUP.key) ?: DialMode.POPUP.key
         val mode = DialMode.fromKey(modeKey)
 
         return when (mode) {
@@ -593,6 +595,7 @@ class DialService : Service() {
                 _sendResult?.invoke(number, "ok")
                 callLogDb.insertDial(number, "ok", simSlot)
                 notifyNewDial(number)
+                copyNumberToClipboard(number)
                 return
             } catch (e: SecurityException) {
                 Log.e(TAG, "TelecomManager无权限: ${e.message}")
@@ -611,6 +614,7 @@ class DialService : Service() {
                 _sendResult?.invoke(number, "ok")
                 callLogDb.insertDial(number, "ok", simSlot)
                 notifyNewDial(number)
+                copyNumberToClipboard(number)
             } catch (e: Exception) {
                 Log.e(TAG, "ACTION_CALL也失败: ${e.message}")
                 _sendResult?.invoke(number, "error")
@@ -619,6 +623,29 @@ class DialService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "拨号异常: ${e.message}")
             _sendResult?.invoke(number, "error")
+        }
+    }
+
+    /**
+     * 复制号码到剪贴板并弹 Toast 提示
+     */
+    private fun copyNumberToClipboard(number: String) {
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("phone_number", number))
+            Log.d(TAG, "已复制号码到剪贴板: $number")
+            // 弹 Toast 提示（Service 中需要用主线程）
+            handler.post {
+                try {
+                    android.widget.Toast.makeText(
+                        this@DialService,
+                        "已复制$number",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "复制号码到剪贴板失败: ${e.message}")
         }
     }
 
@@ -751,7 +778,7 @@ class DialService : Service() {
     private fun createNotificationChannel() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(CHANNEL_ID, "AutoDial 服务", NotificationManager.IMPORTANCE_LOW)
+                val channel = NotificationChannel(CHANNEL_ID, "跨屏拨号 服务", NotificationManager.IMPORTANCE_LOW)
                     .apply { description = "保持拨号连接" }
                 getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
             }
@@ -760,7 +787,7 @@ class DialService : Service() {
 
     private fun buildNotification(text: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("AutoDial").setContentText(text)
+            .setContentTitle("跨屏拨号").setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setOngoing(true).setSilent(true).build()
     }
