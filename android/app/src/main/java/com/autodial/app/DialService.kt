@@ -217,8 +217,10 @@ class DialService : Service() {
                 override fun onOpen(ws: WebSocket, response: Response) {
                     Log.d(TAG, "WebSocket 已打开")
                     try {
+                        val deviceName = android.os.Build.MODEL ?: android.os.Build.DEVICE ?: "Android"
                         ws.send(JSONObject().apply {
                             put("type", "phone_hello"); put("pin", pin)
+                            put("deviceName", deviceName)
                         }.toString())
                     } catch (e: Exception) { Log.e(TAG, "发送失败: ${e.message}") }
                 }

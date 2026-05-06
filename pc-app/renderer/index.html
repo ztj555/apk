@@ -139,7 +139,7 @@
   .topmost-switch .sw-track {
     width: 28px; height: 14px;
     background: var(--bg);
-    border-radius: 7px; /* 开关保持半圆 */
+    border-radius: 7px;
     position: relative;
     transition: background 0.2s;
     border: 1px solid var(--text2);
@@ -162,6 +162,73 @@
     background: var(--gold-light);
   }
   .topmost-switch .sw-label { font-size: 10px; color: var(--text2); }
+
+  /* ---- 手机选择器 ---- */
+  .phone-selector {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--gold-dark);
+    padding: 6px 14px;
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .phone-selector.show { display: flex; }
+  .phone-list {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .phone-tag {
+    background: var(--bg);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-md);
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .phone-tag:hover { border-color: var(--gold-dark); color: var(--text); background: var(--bg3); }
+  .phone-tag.active {
+    border-color: var(--gold);
+    color: var(--gold-light);
+    background: rgba(201,168,76,0.1);
+    box-shadow: 0 0 6px rgba(201,168,76,0.15);
+  }
+  .phone-tag .phone-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+  .phone-tag .phone-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .phone-tag .phone-note-hint {
+    font-size: 9px;
+    color: var(--text2);
+    margin-left: 2px;
+  }
+  .phone-tag.active .phone-note-hint { color: var(--gold); }
+  .phone-rename-input {
+    background: var(--bg);
+    border: 1px solid var(--gold);
+    border-radius: var(--radius-sm);
+    padding: 3px 8px;
+    font-size: 11px;
+    color: var(--text);
+    outline: none;
+    width: 120px;
+  }
 
   /* ---- 连接成功横幅 ---- */
   .banner {
@@ -421,6 +488,11 @@
 
   <div class="banner" id="banner">&#x2705; 手机已连接，可以拨号</div>
 
+  <!-- 多手机选择器 -->
+  <div class="phone-selector" id="phoneSelector">
+    <div class="phone-list" id="phoneList"></div>
+  </div>
+
   <div class="body">
     <div class="number-box">
       <div class="number-row">
@@ -477,6 +549,8 @@ let isConnected = false;
 let lastClipboard = '';
 let clipboardTimer = null;
 let logOpen = false;
+let currentPhones = [];  // 当前手机列表
+let currentActiveId = null;  // 当前活跃手机ID
 
 // ==================== 标题栏按钮 ====================
 document.getElementById('btnSettings').addEventListener('click', () => {
@@ -574,6 +648,7 @@ async function init() {
 
   // IPC 事件监听
   window.api.on('status-update', (data) => setPhoneConnected(data.connected, data.phoneIP));
+  window.api.on('phones-update', (data) => updatePhoneSelector(data.phones, data.activeId));
   window.api.on('info-push', (data) => {
     document.getElementById('localIP').textContent = data.ip || '--';
     document.getElementById('pinCode').textContent = data.pin || '----';
@@ -613,14 +688,129 @@ function setPhoneConnected(connected, phoneIP) {
     dot.className = 'status-dot on';
     txt.textContent = phoneIP ? phoneIP : '已连接';
     banner.className = 'banner show';
-    addLog('success', '手机已连接' + (phoneIP ? ' ' + phoneIP : ''));
-    showToast('手机已连接！', 'success');
   } else {
     dot.className = 'status-dot';
     txt.textContent = '等待连接';
     banner.className = 'banner';
-    addLog('error', '手机已断开');
   }
+}
+
+// ==================== 多手机选择器 ====================
+function updatePhoneSelector(phones, activeId) {
+  currentPhones = phones || [];
+  currentActiveId = activeId;
+  const selector = document.getElementById('phoneSelector');
+  const list = document.getElementById('phoneList');
+  const banner = document.getElementById('banner');
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+
+  if (currentPhones.length === 0) {
+    selector.className = 'phone-selector';
+    isConnected = false;
+    dot.className = 'status-dot';
+    txt.textContent = '等待连接';
+    banner.className = 'banner';
+    document.getElementById('callBtn').disabled = true;
+    document.getElementById('hangupBtn').disabled = true;
+    updateCallBtnText();
+    updateHangupBtnText();
+    return;
+  }
+
+  isConnected = true;
+  dot.className = 'status-dot on';
+  selector.className = 'phone-selector show';
+
+  // 多手机时 banner 显示数量
+  if (currentPhones.length > 1) {
+    banner.className = 'banner show';
+    banner.innerHTML = '&#x2705; ' + currentPhones.length + '部手机已连接';
+  } else {
+    banner.className = 'banner show';
+    banner.innerHTML = '&#x2705; 手机已连接，可以拨号';
+  }
+
+  // 更新状态栏文字
+  const activePhone = currentPhones.find(p => p.id === activeId);
+  if (activePhone) {
+    const display = activePhone.note || activePhone.name;
+    txt.textContent = display;
+  }
+
+  // 渲染手机标签
+  list.innerHTML = '';
+  currentPhones.forEach(phone => {
+    const tag = document.createElement('div');
+    tag.className = 'phone-tag' + (phone.id === activeId ? ' active' : '');
+
+    const dotEl = document.createElement('span');
+    dotEl.className = 'phone-dot';
+    tag.appendChild(dotEl);
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'phone-name';
+    nameEl.textContent = phone.note || phone.name;
+    tag.appendChild(nameEl);
+
+    if (phone.note) {
+      const hint = document.createElement('span');
+      hint.className = 'phone-note-hint';
+      hint.textContent = '(' + phone.name + ')';
+      tag.appendChild(hint);
+    }
+
+    // 点击切换活跃手机
+    tag.addEventListener('click', () => {
+      window.api.send('select-phone', phone.id);
+    });
+
+    // 双击编辑备注
+    tag.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      startRename(phone.id, phone.note || '');
+    });
+
+    list.appendChild(tag);
+  });
+
+  // 更新按钮状态
+  const hasNumber = document.getElementById('numberInput').value.trim();
+  document.getElementById('callBtn').disabled = !(isConnected && hasNumber);
+  document.getElementById('hangupBtn').disabled = !isConnected;
+  updateCallBtnText();
+  updateHangupBtnText();
+}
+
+function startRename(phoneId, currentNote) {
+  const list = document.getElementById('phoneList');
+  const tags = list.querySelectorAll('.phone-tag');
+  tags.forEach(tag => {
+    if (tag.__phoneId !== phoneId) return;
+    // 替换为输入框
+    tag.innerHTML = '';
+    const input = document.createElement('input');
+    input.className = 'phone-rename-input';
+    input.value = currentNote;
+    input.placeholder = '输入备注名';
+    tag.appendChild(input);
+    input.focus();
+    input.select();
+
+    const finish = () => {
+      window.api.send('rename-phone', { id: phoneId, note: input.value.trim() });
+    };
+    input.addEventListener('blur', finish);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.value = currentNote; input.blur(); }
+    });
+  });
+  // 给 tags 打标记
+  const phoneList = currentPhones;
+  tags.forEach((tag, i) => {
+    if (phoneList[i]) tag.__phoneId = phoneList[i].id;
+  });
 }
 
 // ==================== 拨号盘 ====================

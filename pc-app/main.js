@@ -18,7 +18,8 @@ const DEFAULT_SETTINGS = {
   autoStart: false,          // 开机自启动
   silentStart: false,        // 隐藏界面启动
   theme: 'dark-gold',        // 主题ID
-  mode: 'dark'               // 显示模式 dark/dusk/dawn/twilight/warm/mist/light
+  mode: 'dark',              // 显示模式 dark/dusk/dawn/twilight/warm/mist/light
+  phoneNotes: {}             // 手机备注 { "ip|name": "备注" }
 };
 
 function loadSettings() {
@@ -114,9 +115,46 @@ const SUBNET = getSubnet();
 const PORT = 35432;
 const DISCOVERY_PORT = 35433;
 
-let phoneSocket = null;  // 手机端连接
-let pluginSocket = null; // 插件端连接
-let phoneIP = null;
+// ==================== 多手机连接管理 ====================
+const phoneDevices = new Map();  // id -> { ws, ip, name, note, connectedAt }
+let activePhoneId = null;        // 当前活跃手机ID
+let pluginSocket = null;         // 插件端连接
+
+function getActivePhone() {
+  if (!activePhoneId) return null;
+  const dev = phoneDevices.get(activePhoneId);
+  if (!dev || dev.ws.readyState !== WebSocket.OPEN) return null;
+  return dev;
+}
+
+function getPhoneList() {
+  const list = [];
+  phoneDevices.forEach((dev, id) => {
+    list.push({
+      id,
+      ip: dev.ip,
+      name: dev.name,
+      note: dev.note,
+      active: id === activePhoneId,
+      connectedAt: dev.connectedAt
+    });
+  });
+  return list;
+}
+
+// 备注持久化：存储在 settings.phoneNotes 中，key 为 "ip|name"
+function getPhoneNoteKey(ip, name) {
+  return ip + '|' + name;
+}
+function loadPhoneNote(ip, name) {
+  const notes = appSettings.phoneNotes || {};
+  return notes[getPhoneNoteKey(ip, name)] || '';
+}
+function savePhoneNote(ip, name, note) {
+  if (!appSettings.phoneNotes) appSettings.phoneNotes = {};
+  appSettings.phoneNotes[getPhoneNoteKey(ip, name)] = note;
+  saveSettings(appSettings);
+}
 let mainWindow = null;
 let floatBarWindow = null;
 let settingsWindow = null;
@@ -316,9 +354,9 @@ function createMainWindow() {
         pin: PIN_CODE,
         port: PORT
       });
-      // 如果手机已连接，补发状态（含真实 IP）
-      if (phoneSocket && phoneSocket.readyState === WebSocket.OPEN) {
-        mainWindow.webContents.send('status-update', { connected: true, phoneIP: phoneIP });
+      // 如果有手机已连接，补发完整列表
+      if (phoneDevices.size > 0) {
+        mainWindow.webContents.send('phones-update', { phones: getPhoneList(), activeId: activePhoneId });
       }
       // 推送当前主题设置
       mainWindow.webContents.send('theme-changed', { theme: appSettings.theme, mode: appSettings.mode });
@@ -473,7 +511,8 @@ ipcMain.handle('get-info', async () => {
     pin: PIN_CODE,
     ip: LOCAL_IP,
     port: PORT,
-    connected: phoneSocket !== null,
+    connected: phoneDevices.size > 0,
+    phoneCount: phoneDevices.size,
     hostname: os.hostname(),
     firewall: firewallWarning ? 'warning' : 'ok'
   };
@@ -493,28 +532,30 @@ ipcMain.handle('read-clipboard', async () => {
 
 // 拨号指令
 ipcMain.on('dial', (event, number) => {
-  if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+  const active = getActivePhone();
+  if (!active) {
     _sendError(event, '手机未连接');
     return;
   }
-  phoneSocket.send(JSON.stringify({ type: 'dial', number }));
-  console.log('[拨号] ' + number);
+  active.ws.send(JSON.stringify({ type: 'dial', number }));
+  console.log('[拨号] ' + number + ' → ' + active.name + ' (' + active.ip + ')');
   // 通知 UI 拨号已发送
   [mainWindow, floatBarWindow].forEach(win => {
     if (win && !win.isDestroyed()) {
-      try { win.webContents.send('dial-sent', { number }); } catch (e) {}
+      try { win.webContents.send('dial-sent', { number, phoneId: activePhoneId }); } catch (e) {}
     }
   });
 });
 
 // 挂断指令
 ipcMain.on('hangup', (event) => {
-  if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+  const active = getActivePhone();
+  if (!active) {
     _sendError(event, '手机未连接');
     return;
   }
-  phoneSocket.send(JSON.stringify({ type: 'hangup' }));
-  console.log('[挂断] 电脑端发送挂断指令');
+  active.ws.send(JSON.stringify({ type: 'hangup' }));
+  console.log('[挂断] 电脑端发送挂断指令 → ' + active.name);
   [mainWindow, floatBarWindow].forEach(win => {
     if (win && !win.isDestroyed()) {
       try { win.webContents.send('hangup-sent'); } catch (e) {}
@@ -524,12 +565,13 @@ ipcMain.on('hangup', (event) => {
 
 // 发送短信指令
 ipcMain.on('send-sms', (event, data) => {
-  if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+  const active = getActivePhone();
+  if (!active) {
     _sendError(event, '手机未连接');
     return;
   }
-  phoneSocket.send(JSON.stringify({ type: 'sms', number: data.number, content: data.content }));
-  console.log('[短信] 发送短信请求: ' + data.number + ', 内容长度=' + data.content.length);
+  active.ws.send(JSON.stringify({ type: 'sms', number: data.number, content: data.content }));
+  console.log('[短信] 发送短信请求: ' + data.number + ', 内容长度=' + data.content.length + ' → ' + active.name);
 });
 
 // 打开短信编辑窗口
@@ -546,7 +588,7 @@ ipcMain.on('open-sms', (event, payload) => {
     if (content) {
       try { smsWindow.webContents.send('sms-content', content); } catch (e) {}
     }
-    try { smsWindow.webContents.send('status-update', { connected: phoneSocket !== null, phoneIP: null }); } catch (e) {}
+    try { smsWindow.webContents.send('status-update', { connected: phoneDevices.size > 0, phoneIP: null }); } catch (e) {}
     return;
   }
   smsWindow = new BrowserWindow({
@@ -575,7 +617,7 @@ ipcMain.on('open-sms', (event, payload) => {
       smsWindow.webContents.send('sms-number', number);
       if (content) smsWindow.webContents.send('sms-content', content);
       // 同步手机连接状态
-      smsWindow.webContents.send('status-update', { connected: phoneSocket !== null, phoneIP: null });
+      smsWindow.webContents.send('status-update', { connected: phoneDevices.size > 0, phoneIP: null });
     } catch (e) {}
   });
 });
@@ -658,6 +700,25 @@ ipcMain.handle('floatbar-get-scale', () => {
   return floatBarScale;
 });
 
+// 选择活跃手机
+ipcMain.on('select-phone', (event, id) => {
+  if (!phoneDevices.has(id)) return;
+  activePhoneId = id;
+  const dev = phoneDevices.get(id);
+  console.log('[切换] 活跃手机: ' + dev.name + ' (' + dev.ip + ')');
+  _notifyPhonesUpdate();
+});
+
+// 修改手机备注
+ipcMain.on('rename-phone', (event, { id, note }) => {
+  const dev = phoneDevices.get(id);
+  if (!dev) return;
+  dev.note = note;
+  savePhoneNote(dev.ip, dev.name, note);
+  console.log('[备注] ' + dev.name + ' → ' + note);
+  _notifyPhonesUpdate();
+});
+
 function _sendError(event, message) {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win && !win.isDestroyed()) {
@@ -690,15 +751,16 @@ const server = http.createServer((req, res) => {
       return;
     }
     
-    // 转发给手机端拨号
-    if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+    // 转发给活跃手机端拨号
+    const active = getActivePhone();
+    if (!active) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ success: false, error: '手机未连接' }));
       console.log('[HTTP拨号] 失败：手机未连接');
       return;
     }
-    
-    phoneSocket.send(JSON.stringify({ type: 'dial', number }));
+
+    active.ws.send(JSON.stringify({ type: 'dial', number }));
 
     // 同时将号码写入剪贴板
     try { clipboard.writeText(number); } catch (e) {}
@@ -709,13 +771,27 @@ const server = http.createServer((req, res) => {
     return;
   }
   
+  // 打开主窗口接口 - 浏览器插件调用
+  if (url.pathname === '/open') {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+      console.log('[HTTP] 插件请求打开主窗口');
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ success: true }));
+    return;
+  }
+
   // 默认：返回状态信息
   res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify({
     pin: PIN_CODE,
     ip: LOCAL_IP,
     port: PORT,
-    connected: phoneSocket !== null
+    connected: phoneDevices.size > 0,
+    phoneCount: phoneDevices.size,
+    phones: getPhoneList()
   }));
 });
 
@@ -737,16 +813,30 @@ wss.on('connection', (ws, req) => {
           console.log('[拒绝] 配对码错误: ' + msg.pin);
           return;
         }
-        if (phoneSocket && phoneSocket.readyState === WebSocket.OPEN) {
-          phoneSocket.send(JSON.stringify({ type: 'kicked', reason: '有新设备连接' }));
-          phoneSocket.close();
-        }
-        phoneSocket = ws;
+        // 分配唯一ID，支持多手机并存
+        const deviceId = clientIP.replace(/\./g, '') + '_' + Date.now();
+        const deviceName = msg.deviceName || ('手机-' + clientIP.slice(-3));
+        const savedNote = loadPhoneNote(clientIP, deviceName);
+
         ws.isPhone = true;
-        phoneIP = clientIP;
-        ws.send(JSON.stringify({ type: 'auth_ok', message: '配对成功！' }));
-        _notifyUIStatus(true, clientIP);
-        console.log('[配对] 手机连接成功: ' + clientIP);
+        ws.deviceId = deviceId;
+
+        phoneDevices.set(deviceId, {
+          ws,
+          ip: clientIP,
+          name: deviceName,
+          note: savedNote,
+          connectedAt: Date.now()
+        });
+
+        // 自动选中第一个连接的手机
+        if (!activePhoneId || !phoneDevices.has(activePhoneId)) {
+          activePhoneId = deviceId;
+        }
+
+        ws.send(JSON.stringify({ type: 'auth_ok', message: '配对成功！', deviceId }));
+        _notifyPhonesUpdate();
+        console.log('[配对] 手机连接成功: ' + deviceName + ' (' + clientIP + ') ID=' + deviceId);
         return;
       }
 
@@ -782,21 +872,22 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'plugin_hello') {
         pluginSocket = ws;
         ws.isPlugin = true;
-        ws.send(JSON.stringify({ type: 'plugin_ok', message: '插件已连接', phoneConnected: phoneSocket !== null }));
+        ws.send(JSON.stringify({ type: 'plugin_ok', message: '插件已连接', phoneConnected: phoneDevices.size > 0 }));
         console.log('[插件] 浏览器插件连接成功');
         return;
       }
 
       // 插件发送拨号命令
       if (msg.type === 'dial' && ws.isPlugin) {
-        if (!phoneSocket || phoneSocket.readyState !== WebSocket.OPEN) {
+        const active = getActivePhone();
+        if (!active) {
           ws.send(JSON.stringify({ type: 'dial_fail', reason: '手机未连接' }));
           console.log('[拒绝] 插件拨号失败：手机未连接');
           return;
         }
-        // 转发拨号命令给手机端
-        phoneSocket.send(JSON.stringify({ type: 'dial', number: msg.number }));
-        console.log('[插件-拨号] ' + msg.number + ' (来自浏览器插件)');
+        // 转发拨号命令给活跃手机端
+        active.ws.send(JSON.stringify({ type: 'dial', number: msg.number }));
+        console.log('[插件-拨号] ' + msg.number + ' → ' + active.name + ' (来自浏览器插件)');
         // 确认给插件
         ws.send(JSON.stringify({ type: 'dial_sent', number: msg.number }));
         return;
@@ -808,11 +899,17 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (ws.isPhone) {
-      phoneSocket = null;
-      phoneIP = null;
-      _notifyUIStatus(false, null);
-      console.log('[断开] 手机断开连接: ' + clientIP);
+    if (ws.isPhone && ws.deviceId) {
+      const dev = phoneDevices.get(ws.deviceId);
+      const name = dev ? dev.name : ws.deviceId;
+      phoneDevices.delete(ws.deviceId);
+      // 如果断开的是活跃手机，自动切到第一个
+      if (activePhoneId === ws.deviceId) {
+        const first = phoneDevices.keys().next();
+        activePhoneId = first.done ? null : first.value;
+      }
+      _notifyPhonesUpdate();
+      console.log('[断开] 手机断开连接: ' + name + ' (' + clientIP + ')');
     }
     if (ws.isPlugin) {
       pluginSocket = null;
@@ -825,11 +922,21 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-function _notifyUIStatus(connected, phoneIP) {
-  const data = { connected, phoneIP };
+function _notifyPhonesUpdate() {
+  const data = {
+    phones: getPhoneList(),
+    activeId: activePhoneId,
+    connected: phoneDevices.size > 0
+  };
+  // 向后兼容：也发 status-update 事件（旧 UI 依赖）
+  const compatData = {
+    connected: phoneDevices.size > 0,
+    phoneIP: activePhoneId ? (phoneDevices.get(activePhoneId)?.ip || null) : null
+  };
   [mainWindow, floatBarWindow, smsWindow].forEach(win => {
     if (win && !win.isDestroyed()) {
-      try { win.webContents.send('status-update', data); } catch (e) {}
+      try { win.webContents.send('phones-update', data); } catch (e) {}
+      try { win.webContents.send('status-update', compatData); } catch (e) {}
     }
   });
 }

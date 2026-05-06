@@ -409,6 +409,28 @@ window.api.on('status-update', (data) => {
   }
 });
 
+// 多手机更新
+window.api.on('phones-update', (data) => {
+  isConnected = data.connected;
+  const dot = document.getElementById('fbDot');
+  const dialBtn = document.getElementById('fbDialBtn');
+  const hangupBtn = document.getElementById('fbHangupBtn');
+  if (data.connected) {
+    dot.className = 'fb-dot on';
+    dialBtn.disabled = !document.getElementById('fbInput').value;
+    hangupBtn.disabled = false;
+  } else {
+    dot.className = 'fb-dot';
+    dialBtn.disabled = true;
+    hangupBtn.disabled = true;
+  }
+  // 多手机时在工具提示显示当前活跃手机
+  const active = (data.phones || []).find(p => p.id === data.activeId);
+  if (active) {
+    document.getElementById('fbInput').title = '当前: ' + (active.note || active.name) + ' (' + active.ip + ')';
+  }
+});
+
 window.api.on('dial-sent', (data) => {
   showToast('已发送: ' + data.number, 'success');
 });
