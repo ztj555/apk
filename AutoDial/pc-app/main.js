@@ -1251,11 +1251,12 @@ let cloudWs = null;              // 云中转 WebSocket 连接
 let cloudReconnectTimer = null;  // 重连定时器
 let cloudReconnectAttempt = 0;  // 重连次数（指数退避用）
 let cloudConnected = false;      // 云端是否已连接
+let _cloudTraversalGeneration = 0;  // 遍历代数计数器，防止重连时旧遍历和新遍历冲突
 
 // 云端手机设备（通过云中转连接的手机，和 LAN 手机分开管理但统一在 phoneDevices 中）
 // phoneDevices 中 ip 字段：LAN 手机是实际 IP，云端手机是 'cloud'
 
-function connectCloudServer(targetServerUrl) {
+function connectCloudServer(targetServerUrl, onResult) {
   if (cloudWs) {
     try { cloudWs.close(); } catch (e) {}
     cloudWs = null;
@@ -1299,9 +1300,8 @@ function connectCloudServer(targetServerUrl) {
           console.log('[云端] 认证成功，PIN=' + msg.pin + '，在线手机数=' + msg.phoneCount);
           _notifyCloudStatus();
           // 如果是遍历连接模式，通知成功
-          if (typeof connectCloudServersFromList._onResult === 'function') {
-            connectCloudServersFromList._onResult(true, serverUrl);
-            connectCloudServersFromList._onResult = null;
+          if (typeof onResult === 'function') {
+            onResult(true, serverUrl);
           }
         }
 
@@ -1310,9 +1310,8 @@ function connectCloudServer(targetServerUrl) {
           cloudConnected = false;
           console.error('[云端] 认证失败: ' + (msg.reason || ''));
           _notifyCloudStatus();
-          if (typeof connectCloudServersFromList._onResult === 'function') {
-            connectCloudServersFromList._onResult(false, serverUrl);
-            connectCloudServersFromList._onResult = null;
+          if (typeof onResult === 'function') {
+            onResult(false, serverUrl);
           }
         }
 
@@ -1405,6 +1404,8 @@ function connectCloudServer(targetServerUrl) {
     });
 
     cloudWs.on('close', (code, reason) => {
+      if (cloudWs._cleanedUp) return;
+      cloudWs._cleanedUp = true;
       cloudConnected = false;
       // 人类可读的错误说明
       let errMsg = '';
@@ -1429,24 +1430,22 @@ function connectCloudServer(targetServerUrl) {
       });
       _notifyCloudStatus();
       _notifyPhonesUpdate();
-      // 遍历模式回调失败
-      if (typeof connectCloudServersFromList._onResult === 'function') {
-        connectCloudServersFromList._onResult(false, serverUrl);
-        connectCloudServersFromList._onResult = null;
+      if (typeof onResult === 'function') {
+        onResult(false, serverUrl);
       }
       // 自动重连
       _scheduleCloudReconnect();
     });
 
     cloudWs.on('error', (err) => {
+      if (cloudWs._cleanedUp) return;
+      cloudWs._cleanedUp = true;
       cloudConnected = false;
       console.error('[云端] 连接错误:', err.message);
       _removeCloudPhones();
       _notifyCloudStatus();
-      // 遍历模式回调失败
-      if (typeof connectCloudServersFromList._onResult === 'function') {
-        connectCloudServersFromList._onResult(false, serverUrl);
-        connectCloudServersFromList._onResult = null;
+      if (typeof onResult === 'function') {
+        onResult(false, serverUrl);
       }
     });
 
@@ -1459,9 +1458,8 @@ function connectCloudServer(targetServerUrl) {
 
   } catch (e) {
     console.error('[云端] 创建连接失败:', e.message);
-    if (typeof connectCloudServersFromList._onResult === 'function') {
-      connectCloudServersFromList._onResult(false, serverUrl);
-      connectCloudServersFromList._onResult = null;
+    if (typeof onResult === 'function') {
+      onResult(false, serverUrl);
     }
   }
 }
@@ -1474,7 +1472,13 @@ function connectCloudServer(targetServerUrl) {
 function connectCloudServersFromList(servers, startIndex) {
   if (!Array.isArray(servers) || servers.length === 0) return;
 
+  const thisGeneration = ++_cloudTraversalGeneration;
+
   function tryNext(index) {
+    if (thisGeneration !== _cloudTraversalGeneration) {
+      console.log('[云端] 遍历已被新连接取代，停止当前遍历');
+      return;
+    }
     if (index >= servers.length) {
       console.log('[云端] 所有云服务器连接失败');
       return;
@@ -1483,17 +1487,15 @@ function connectCloudServersFromList(servers, startIndex) {
     const server = servers[index];
     console.log('[云端] 尝试服务器 ' + (index + 1) + '/' + servers.length + ': ' + server);
 
-    // 设置回调，成功即停，失败尝试下一个
-    connectCloudServersFromList._onResult = function(success, url) {
+    connectCloudServer(server, function(success, url) {
+      if (thisGeneration !== _cloudTraversalGeneration) return;
       if (success) {
         console.log('[云端] 服务器连接成功: ' + url);
       } else {
         console.log('[云端] 服务器连接失败: ' + url + '，尝试下一个');
         tryNext(index + 1);
       }
-    };
-
-    connectCloudServer(server);
+    });
   }
 
   tryNext(startIndex || 0);

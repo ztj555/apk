@@ -10,6 +10,7 @@ import logging
 import sys
 import os
 import signal
+import subprocess
 import threading
 from collections import defaultdict
 from datetime import datetime
@@ -104,10 +105,30 @@ async def forward_to_pcs(pin, message, exclude_ws=None):
                 group.pcs.discard(pc)
 
 async def forward_to_phones(pin, message, exclude_ws=None):
+    """转发消息给手机，支持 targetDevice 精确路由"""
     group = pin_groups.get(pin)
     if not group:
         return
     data = json.dumps(message, ensure_ascii=False)
+    target_device = message.get('targetDevice')
+
+    if target_device:
+        # 精确路由：只发给目标设备
+        for phone in list(group.phones):
+            if phone == exclude_ws:
+                continue
+            meta = ws_meta.get(phone, {})
+            if meta.get('device_name') == target_device:
+                try:
+                    await phone.send(data)
+                except Exception:
+                    group.phones.discard(phone)
+                return
+        # 目标设备不在线，记录日志
+        log.warning(f'TARGET_DEVICE_NOT_FOUND pin={pin} target={target_device}')
+        return
+
+    # 无 targetDevice：广播给所有手机（向后兼容）
     for phone in list(group.phones):
         if phone != exclude_ws:
             try:
@@ -204,8 +225,12 @@ async def handle_connection(ws, path=None):
 
             # ===== PC→手机 转发 =====
             if msg_type in PC_TO_PHONE_TYPES:
+                target = msg.get('targetDevice', '')
+                if target:
+                    log.info(f'RELAY {msg_type} pc→phone pin={pin} target={target}')
+                else:
+                    log.info(f'RELAY {msg_type} pc→phone pin={pin} (broadcast)')
                 await forward_to_phones(pin, msg, ws)
-                log.info(f'RELAY {msg_type} pc→phone pin={pin}')
                 continue
 
             log.info(f'UNKNOWN type={msg_type} pin={pin}')
@@ -385,6 +410,26 @@ def run_server_thread():
         log.error(f'Server error: {e}')
         update_tray_status(False)
 
+# ==================== 防火墙规则 ====================
+def add_firewall_rule():
+    """自动添加 Windows 防火墙入站规则，允许端口 35430"""
+    if sys.platform != 'win32':
+        log.info('非 Windows 系统，跳过防火墙配置')
+        return
+    try:
+        result = subprocess.run(
+            f'netsh advfirewall firewall add rule name="AutoDial Cloud Relay" '
+            f'dir=in action=allow protocol=TCP localport={PORT} profile=any '
+            f'description=AutoDial云中转服务器',
+            shell=True, capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            log.info(f'防火墙规则已添加: TCP {PORT}')
+        else:
+            log.warning(f'防火墙规则添加失败: {result.stderr.strip()}')
+    except Exception as e:
+        log.warning(f'防火墙配置异常: {e}')
+
 # ==================== 主入口 ====================
 def main():
     print('')
@@ -395,6 +440,9 @@ def main():
     print(f'  PID:      {os.getpid()}')
     print('========================================')
     print('')
+
+    # 自动添加防火墙规则
+    add_firewall_rule()
 
     # 启动服务器线程
     server_thread = threading.Thread(target=run_server_thread, daemon=True)

@@ -3,16 +3,11 @@
 *.ap_
 *.dex
 *.class
-*.apk
-*.ap_
-
 
 # Gradle files
 .gradle/
 build/
 */build/
-**/*.apk
-**/*.ap_
 local.properties
 
 # IDE files
@@ -41,3 +36,14 @@ desktop.ini
 # Temporary files
 *.tmp
 *.bak
+
+# Build artifacts
+AutoDial/cloud-relay/python/build/
+AutoDial/cloud-relay/python/dist/
+AutoDial/cloud-relay/python/__pycache__/
+AutoDial/pc-app/dist/
+AutoDial/pc-app/output/
+AutoDial/pc-app/node_modules/
+
+# Signing key (keep local only)
+*.p12
