@@ -28,26 +28,26 @@ jobs:
           echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
 
       - name: Create gradle wrapper
-        working-directory: android
+        working-directory: AutoDial/android
         run: |
           gradle wrapper --gradle-version 8.4
 
       - name: Build Debug APK
-        working-directory: android
+        working-directory: AutoDial/android
         run: ./gradlew assembleDebug
 
       - name: Build Release APK
-        working-directory: android
+        working-directory: AutoDial/android
         run: ./gradlew assembleRelease
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: AutoDial-APK-Debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: AutoDial/android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: AutoDial-APK-Release
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: AutoDial/android/app/build/outputs/apk/release/app-release.apk
