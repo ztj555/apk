@@ -1473,7 +1473,6 @@ function _removeCloudPhones() {
     PhoneConnectionManager.removePhone(id, 'cloud');
   });
   activePhoneId = PhoneConnectionManager.activePhoneId;
-  });
 }
 
 function disconnectCloudServer() {
