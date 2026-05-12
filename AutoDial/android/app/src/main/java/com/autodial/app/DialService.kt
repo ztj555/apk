@@ -204,15 +204,25 @@ class DialService : Service() {
             connectionManager.loadSavedConfig()
 
         } catch (e: Exception) {
+            Log.e(TAG, "Service onCreate error: ${e.message}", e)
             isRunning = true
             callLogDb = CallLogDb(this)
             createNotificationChannel()
             try { startForeground(NOTIFICATION_ID, buildNotification("跨屏拨号 运行中")) } catch (_: Exception) {}
+            // 即使初始化失败，也要创建 ConnectionManager，避免 lateinit 错误
+            if (!::connectionManager.isInitialized) {
+                connectionManager = ConnectionManager(this)
+            }
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
+            // 确保 ConnectionManager 已初始化
+            if (!::connectionManager.isInitialized) {
+                connectionManager = ConnectionManager(this)
+            }
+
             when (intent?.action) {
                 "CONNECT" -> {
                     val ip = intent.getStringExtra("ip") ?: ""
@@ -268,9 +278,7 @@ class DialService : Service() {
                     getSharedPreferences("autodial", MODE_PRIVATE).edit()
                         .putBoolean("cloud_enabled", false).apply()
                     // 真正断开云端 WebSocket
-                    if (::connectionManager.isInitialized) {
-                        connectionManager.disconnectCloud()
-                    }
+                    connectionManager.disconnectCloud()
                 }
                 /** SimSelectBottomSheet 用户选好卡后回调 */
                 "DIAL_WITH_SIM" -> {
