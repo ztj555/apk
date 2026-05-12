@@ -57,7 +57,6 @@ class DialService : Service() {
         val cloudConnected: Boolean get() = _instance?.connectionManager?.isCloudConnected ?: false
         val currentCloudServer: String get() = "" // 不再单独追踪
         val currentPin: String get() = _instance?.let { it.lastPin } ?: ""
-        val connectionMode: String get() = _instance?.connectionMode ?: ""
 
         fun newIntent(context: Context): Intent = Intent(context, DialService::class.java)
 
@@ -240,14 +239,17 @@ class DialService : Service() {
                     lastPin = pin
 
                     val serversJson = intent.getStringExtra("cloud_servers")
-                    val servers = if (serversJson != null) {
+                    if (serversJson != null) {
                         getSharedPreferences("autodial", MODE_PRIVATE).edit()
                             .putBoolean("cloud_enabled", true)
                             .putString("cloud_servers", serversJson)
                             .putString("pin", pin)
                             .apply()
                         val arr = org.json.JSONArray(serversJson)
-                        (0 until arr.length()).map { arr.getString(it) }
+                        val servers = (0 until arr.length()).map { arr.getString(it) }
+                        connectionManager.setCloudServers(servers)
+                        // 直接连云端，跳过 LAN 发现
+                        connectionManager.connectCloudOnly(pin)
                     } else {
                         val server = intent.getStringExtra("cloud_server") ?: ""
                         if (server.isNotEmpty()) {
@@ -256,20 +258,19 @@ class DialService : Service() {
                                 .putString("cloud_server", server)
                                 .putString("pin", pin)
                                 .apply()
-                            listOf(server)
-                        } else emptyList()
-                    }
-                    if (servers.isNotEmpty()) {
-                        connectionManager.connectCloudOnly(servers, pin)
+                            connectionManager.setCloudServers(listOf(server))
+                            // 直接连云端，跳过 LAN 发现
+                            connectionManager.connectCloudOnly(pin)
+                        }
                     }
                 }
                 "DISCONNECT_CLOUD" -> {
                     getSharedPreferences("autodial", MODE_PRIVATE).edit()
                         .putBoolean("cloud_enabled", false).apply()
-                    // 只断 cloud 通道，保留 LAN
-                    connectionManager.disconnectCloud()
-                    val mode = connectionManager.getTransportMode()
-                    updateNotification(if (mode.contains("lan")) "已连接到电脑($mode)" else "跨屏拨号 运行中")
+                    // 真正断开云端 WebSocket
+                    if (::connectionManager.isInitialized) {
+                        connectionManager.disconnectCloud()
+                    }
                 }
                 /** SimSelectBottomSheet 用户选好卡后回调 */
                 "DIAL_WITH_SIM" -> {

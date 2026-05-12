@@ -83,8 +83,6 @@ class ConnectionManager(private val context: Context) {
     private var cloudServerList: List<String> = emptyList()
     private var autoReconnect = true
     private var manualConnecting = false
-    /** Service 启动时从 SharedPreferences 恢复的 cloud 开关，LAN 连上后自动挂 Cloud */
-    private var cloudAutoEnabled = false
 
     // SharedPreferences
     private val prefs: SharedPreferences by lazy {
@@ -129,21 +127,6 @@ class ConnectionManager(private val context: Context) {
     }
 
     /**
-     * 直接连接云端，跳过 LAN 发现
-     */
-    fun connectCloudOnly(servers: List<String>, pin: String) {
-        Log.d(TAG, "connectCloudOnly(pin=$pin, servers=${servers.size})")
-        cancelReconnect()
-        cancelCloudReconnect()
-        lastPin = pin
-        manualConnecting = true
-        cloudServerList = servers
-        if (servers.isNotEmpty()) currentCloudServer = servers[0]
-        setState(ConnectionState.CONNECTING)
-        connectCloud(servers, pin)
-    }
-
-    /**
      * 同时断开 LAN 和 Cloud 连接
      */
     fun disconnect() {
@@ -162,7 +145,7 @@ class ConnectionManager(private val context: Context) {
     }
 
     /**
-     * 只断开 Cloud 连接，保留 LAN
+     * 只断开 Cloud 连接，保留 LAN 连接
      */
     fun disconnectCloud() {
         Log.d(TAG, "disconnectCloud()")
@@ -172,20 +155,34 @@ class ConnectionManager(private val context: Context) {
         try { cloudWebSocket?.cancel() } catch (_: Exception) {}
         cloudWebSocket = null
 
-        val wasCloud = transportMode.contains("cloud")
-        if (wasCloud) {
-            if (transportMode.contains("lan")) {
-                transportMode = "lan"
-                Log.d(TAG, "Cloud disconnected, LAN still active (mode=lan)")
-            } else {
-                // 只有 cloud，断开后变成完全断开
+        if (transportMode.contains("cloud")) {
+            transportMode = if (transportMode.contains("lan")) "lan" else ""
+            if (transportMode.isEmpty()) {
                 setState(ConnectionState.DISCONNECTED)
             }
-            // 通知 DialService 更新 cloud 状态
-            listeners.forEach { listener ->
-                try { listener.onStateChanged(state, state) } catch (_: Exception) {}
-            }
+            // 如果 LAN 还在，不改变 CONNECTED 状态
         }
+    }
+
+    /**
+     * 直接连接云端（跳过 LAN 发现）
+     * @param pin 配对码
+     */
+    fun connectCloudOnly(pin: String) {
+        Log.d(TAG, "connectCloudOnly(pin=$pin)")
+        cancelReconnect()
+        cancelCloudReconnect()
+        lastPin = pin
+        manualConnecting = true
+
+        if (cloudServerList.isEmpty()) {
+            Log.d(TAG, "No cloud servers configured, giving up")
+            setState(ConnectionState.DISCONNECTED)
+            manualConnecting = false
+            return
+        }
+        setState(ConnectionState.CONNECTING)
+        connectCloud(cloudServerList, pin)
     }
 
     /**
@@ -226,6 +223,14 @@ class ConnectionManager(private val context: Context) {
             }
         }
 
+        // 最后兜底：不管 transportMode 都尝试
+        if (lanWebSocket != null) {
+            try { if (lanWebSocket?.send(msg.toString()) == true) return true } catch (_: Exception) {}
+        }
+        if (cloudWebSocket != null) {
+            try { cloudWebSocket?.send(msg.toString()); return true } catch (_: Exception) {}
+        }
+
         return false
     }
 
@@ -243,9 +248,6 @@ class ConnectionManager(private val context: Context) {
 
     /**
      * 从 SharedPreferences 加载保存的配置，用于自动重连
-     *
-     * 策略：先启动 LAN 恢复，等 LAN auth_ok 后再自动挂载 Cloud 作为补充。
-     * 避免两条通道同时启动导致竞态（connect() 内部会 cancelCloudReconnect）。
      */
     fun loadSavedConfig() {
         autoReconnect = prefs.getBoolean("auto_reconnect", true)
@@ -267,14 +269,11 @@ class ConnectionManager(private val context: Context) {
             if (currentCloudServer.isNotEmpty()) listOf(currentCloudServer) else emptyList()
         }
 
-        // 记住 cloud 配置，但不在这里启动，等 LAN 连接成功后自动挂载
-        this.cloudAutoEnabled = cloudEnabled
-
         if (wasConnected && lastLanIp.isNotEmpty() && lastPin.isNotEmpty() && !isConnected) {
-            // 先恢复 LAN（快通道）
+            // LAN 自动重连（LAN 失败后会自动 fallback 到云端，不会遗漏云端）
             connect(lastPin, lastLanIp)
         } else if (cloudEnabled && cloudServerList.isNotEmpty() && lastPin.isNotEmpty() && !isConnected) {
-            // 无 LAN 历史，直接走 Cloud
+            // 只启用云端时，直接连云端
             connectCloud(cloudServerList, lastPin)
         }
     }
@@ -422,12 +421,6 @@ class ConnectionManager(private val context: Context) {
                             manualConnecting = false
                             transportMode = if (isCloudConnected) "lan+cloud" else "lan"
                             setState(ConnectionState.CONNECTED)
-                            // LAN 连上后，如果之前 cloud 是自动启用的，自动挂载 Cloud 补充通道
-                            if (cloudAutoEnabled && cloudServerList.isNotEmpty() && !isCloudConnected) {
-                                Log.d(TAG, "LAN connected, auto-mounting cloud channel")
-                                cloudAutoEnabled = false  // 只挂一次
-                                connectCloud(cloudServerList, lastPin)
-                            }
                         }
                         "auth_fail" -> {
                             Log.w(TAG, "LAN auth failed")
