@@ -265,8 +265,10 @@ class DialService : Service() {
                 "DISCONNECT_CLOUD" -> {
                     getSharedPreferences("autodial", MODE_PRIVATE).edit()
                         .putBoolean("cloud_enabled", false).apply()
-                    connectionManager.disconnect()
-                    updateNotification("跨屏拨号 运行中")
+                    // 只断 cloud 通道，保留 LAN
+                    connectionManager.disconnectCloud()
+                    val mode = connectionManager.getTransportMode()
+                    updateNotification(if (mode.contains("lan")) "已连接到电脑($mode)" else "跨屏拨号 运行中")
                 }
                 /** SimSelectBottomSheet 用户选好卡后回调 */
                 "DIAL_WITH_SIM" -> {

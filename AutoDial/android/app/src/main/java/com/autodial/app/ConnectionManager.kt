@@ -83,6 +83,8 @@ class ConnectionManager(private val context: Context) {
     private var cloudServerList: List<String> = emptyList()
     private var autoReconnect = true
     private var manualConnecting = false
+    /** Service 启动时从 SharedPreferences 恢复的 cloud 开关，LAN 连上后自动挂 Cloud */
+    private var cloudAutoEnabled = false
 
     // SharedPreferences
     private val prefs: SharedPreferences by lazy {
@@ -160,6 +162,33 @@ class ConnectionManager(private val context: Context) {
     }
 
     /**
+     * 只断开 Cloud 连接，保留 LAN
+     */
+    fun disconnectCloud() {
+        Log.d(TAG, "disconnectCloud()")
+        cancelCloudReconnect()
+        cloudReconnectAttempts = 0
+
+        try { cloudWebSocket?.cancel() } catch (_: Exception) {}
+        cloudWebSocket = null
+
+        val wasCloud = transportMode.contains("cloud")
+        if (wasCloud) {
+            if (transportMode.contains("lan")) {
+                transportMode = "lan"
+                Log.d(TAG, "Cloud disconnected, LAN still active (mode=lan)")
+            } else {
+                // 只有 cloud，断开后变成完全断开
+                setState(ConnectionState.DISCONNECTED)
+            }
+            // 通知 DialService 更新 cloud 状态
+            listeners.forEach { listener ->
+                try { listener.onStateChanged(state, state) } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /**
      * 发送消息，自动选择 LAN（优先）或 Cloud
      * @return true 如果发送成功
      */
@@ -197,14 +226,6 @@ class ConnectionManager(private val context: Context) {
             }
         }
 
-        // 最后兜底：不管 transportMode 都尝试
-        if (lanWebSocket != null) {
-            try { if (lanWebSocket?.send(msg.toString()) == true) return true } catch (_: Exception) {}
-        }
-        if (cloudWebSocket != null) {
-            try { cloudWebSocket?.send(msg.toString()); return true } catch (_: Exception) {}
-        }
-
         return false
     }
 
@@ -222,6 +243,9 @@ class ConnectionManager(private val context: Context) {
 
     /**
      * 从 SharedPreferences 加载保存的配置，用于自动重连
+     *
+     * 策略：先启动 LAN 恢复，等 LAN auth_ok 后再自动挂载 Cloud 作为补充。
+     * 避免两条通道同时启动导致竞态（connect() 内部会 cancelCloudReconnect）。
      */
     fun loadSavedConfig() {
         autoReconnect = prefs.getBoolean("auto_reconnect", true)
@@ -243,12 +267,15 @@ class ConnectionManager(private val context: Context) {
             if (currentCloudServer.isNotEmpty()) listOf(currentCloudServer) else emptyList()
         }
 
-        if (cloudEnabled && cloudServerList.isNotEmpty()) {
-            connectCloud(cloudServerList, lastPin)
-        }
+        // 记住 cloud 配置，但不在这里启动，等 LAN 连接成功后自动挂载
+        this.cloudAutoEnabled = cloudEnabled
 
         if (wasConnected && lastLanIp.isNotEmpty() && lastPin.isNotEmpty() && !isConnected) {
+            // 先恢复 LAN（快通道）
             connect(lastPin, lastLanIp)
+        } else if (cloudEnabled && cloudServerList.isNotEmpty() && lastPin.isNotEmpty() && !isConnected) {
+            // 无 LAN 历史，直接走 Cloud
+            connectCloud(cloudServerList, lastPin)
         }
     }
 
@@ -395,6 +422,12 @@ class ConnectionManager(private val context: Context) {
                             manualConnecting = false
                             transportMode = if (isCloudConnected) "lan+cloud" else "lan"
                             setState(ConnectionState.CONNECTED)
+                            // LAN 连上后，如果之前 cloud 是自动启用的，自动挂载 Cloud 补充通道
+                            if (cloudAutoEnabled && cloudServerList.isNotEmpty() && !isCloudConnected) {
+                                Log.d(TAG, "LAN connected, auto-mounting cloud channel")
+                                cloudAutoEnabled = false  // 只挂一次
+                                connectCloud(cloudServerList, lastPin)
+                            }
                         }
                         "auth_fail" -> {
                             Log.w(TAG, "LAN auth failed")
@@ -517,11 +550,7 @@ class ConnectionManager(private val context: Context) {
                                 Log.d(TAG, "Cloud auth OK")
                                 cloudReconnectAttempts = 0
                                 manualConnecting = false
-                                if (!transportMode.contains("lan")) {
-                                    transportMode = if (transportMode.contains("lan")) "lan+cloud" else "cloud"
-                                } else {
-                                    transportMode = "lan+cloud"
-                                }
+                                transportMode = if (transportMode.contains("lan")) "lan+cloud" else "cloud"
                                 setState(ConnectionState.CONNECTED)
                             }
                             "auth_fail" -> {
