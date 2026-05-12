@@ -30,6 +30,7 @@
     },
     "files": [
       "main.js",
+      "phone-connection-manager.js",
       "preload.js",
       "renderer/**/*",
       "node_modules/**/*"
