@@ -84,6 +84,7 @@ class DialService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var callLogDb: CallLogDb
     private var phoneStateListener: PhoneStateListener? = null
+    private val handler = Handler(Looper.getMainLooper())
 
     /** 当前正在等待用户选卡的号码 */
     private var pendingDialNumber: String? = null
@@ -301,7 +302,7 @@ class DialService : Service() {
                 } catch (_: Exception) {}
             }
             if (::connectionManager.isInitialized) connectionManager.cleanup()
-            isRunning = false; isConnected = false
+            isRunning = false
             wakeLock?.release(); wakeLock = null
             pendingDialNumber = null
             _instance = null
