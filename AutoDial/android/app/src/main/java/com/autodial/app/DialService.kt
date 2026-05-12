@@ -57,6 +57,7 @@ class DialService : Service() {
         val cloudConnected: Boolean get() = _instance?.connectionManager?.isCloudConnected ?: false
         val currentCloudServer: String get() = "" // 不再单独追踪
         val currentPin: String get() = _instance?.let { it.lastPin } ?: ""
+        val connectionMode: String get() = _instance?.connectionMode ?: ""
 
         fun newIntent(context: Context): Intent = Intent(context, DialService::class.java)
 
