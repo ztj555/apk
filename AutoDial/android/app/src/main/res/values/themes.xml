@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主主题：暗色 -->
+    <style name="Theme.AutoDial" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#C9A84C</item>
+        <item name="colorPrimaryDark">#111318</item>
+        <item name="colorAccent">#F0C040</item>
+        <item name="android:windowBackground">#111318</item>
+        <item name="android:statusBarColor">#111318</item>
+        <item name="android:navigationBarColor">#111318</item>
+    </style>
+
+    <!-- BottomSheetDialog 主题：透明背景 + 圆角 -->
+    <style name="Theme.AutoDial.BottomSheetDialog" parent="Theme.Design.Light.BottomSheetDialog">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:colorBackground">@android:color/transparent</item>
+        <item name="bottomSheetStyle">@style/Widget.Design.BottomSheet.Modal</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+    <!-- 短信确认界面透明主题 -->
+    <style name="Theme.AutoDial.SmsConfirm" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+    </style>
+</resources>

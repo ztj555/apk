@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoDial 设置</title>
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #F0C040;
+    --gold-dark: #8B6914;
+    --bg: #111318;
+    --bg2: #1A1D24;
+    --bg3: #22262F;
+    --text: #E8DCC8;
+    --text2: #A09070;
+    --green: #2ECC71;
+    --red: #E74C3C;
+    --radius-sm: 5px;
+    --radius-md: 10px;
+    --radius-lg: 24px;
+    --shadow: none;
+    --font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    --gradient-green: linear-gradient(135deg, #27AE60, #1E8449);
+    --gradient-red: linear-gradient(135deg, #C0392B, #96281B);
+    --glow-text: none;
+    --floatbar-bg: rgba(26, 29, 36, 0.72);
+    --floatbar-border: rgba(201, 168, 76, 0.25);
+    --floatbar-blur: blur(20px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-family);
+    overflow: hidden;
+    user-select: none;
+  }
+  .wrap {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 标题栏 */
+  .titlebar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--gold-dark);
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+    height: 36px;
+    padding: 0 14px;
+  }
+  .titlebar .logo {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gold-light);
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .titlebar-btns {
+    display: flex;
+    margin-left: auto;
+    height: 100%;
+    -webkit-app-region: no-drag;
+  }
+  .titlebar-btn {
+    width: 46px; height: 36px;
+    background: none; border: none;
+    color: var(--text2);
+    font-size: 10px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s;
+  }
+  .titlebar-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+
+  /* 内容 */
+  .content {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .content::-webkit-scrollbar { width: 3px; }
+  .content::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+
+  .section-title {
+    font-size: 11px;
+    color: var(--text2);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--bg3);
+  }
+
+  .setting-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: var(--bg2);
+    border-radius: var(--radius-md);
+    margin-bottom: 8px;
+    border: 1px solid var(--bg3);
+    transition: border-color 0.2s;
+  }
+  .setting-item:hover { border-color: var(--gold-dark); }
+
+  /* 纵向布局的设置项（主题选择器） */
+  .setting-item.column {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .setting-info {
+    flex: 1;
+  }
+  .setting-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .setting-desc {
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.4;
+  }
+
+  /* 开关 */
+  .switch {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-left: 16px;
+  }
+  .switch input { display: none; }
+  .switch .sw-track {
+    width: 36px; height: 18px;
+    background: var(--bg);
+    border-radius: 9px;
+    position: relative;
+    transition: background 0.2s;
+    border: 1px solid var(--text2);
+  }
+  .switch .sw-track::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--text2);
+    transition: all 0.2s;
+  }
+  .switch input:checked + .sw-track {
+    background: var(--gold-dark);
+    border-color: var(--gold);
+  }
+  .switch input:checked + .sw-track::after {
+    left: 20px;
+    background: var(--gold-light);
+  }
+
+  /* 选择框 */
+  .select-group {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+    margin-left: 16px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .select-option {
+    padding: 4px 10px;
+    background: var(--bg);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .select-option:hover { border-color: var(--gold-dark); color: var(--text); }
+  .select-option.active {
+    background: var(--gold-dark);
+    border-color: var(--gold);
+    color: var(--gold-light);
+    font-weight: 600;
+  }
+
+  .spacer { height: 14px; }
+
+  /* ==================== 主题选择器 ==================== */
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+    width: 100%;
+  }
+  .theme-card {
+    cursor: pointer;
+    text-align: center;
+    transition: transform 0.15s;
+    padding: 4px;
+  }
+  .theme-card:hover { transform: scale(1.05); }
+  .theme-card.active { transform: scale(1.05); }
+  .theme-preview {
+    width: 100%;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    border: 2px solid transparent;
+    overflow: hidden;
+    display: flex;
+    margin-bottom: 4px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .theme-preview > span {
+    flex: 1;
+    height: 100%;
+  }
+  .theme-card.active .theme-preview {
+    border-color: var(--gold);
+    box-shadow: 0 0 8px rgba(201,168,76,0.4);
+  }
+  .theme-name {
+    font-size: 9px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+
+  /* 模式选择行 */
+  .mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--bg3);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .mode-row .setting-label {
+    font-size: 12px;
+    margin-bottom: 0;
+  }
+  /* 显示模式两行grid */
+  .mode-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    width: 100%;
+    margin-top: 6px;
+  }
+  .mode-grid .select-option {
+    text-align: center;
+    margin-left: 0;
+  }
+
+  .footer {
+    text-align: center;
+    padding: 10px;
+    font-size: 10px;
+    color: var(--text2);
+    flex-shrink: 0;
+  }
+</style>
+<script src="../themes/theme-data.js"></script>
+<script src="js/theme.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="titlebar">
+    <div class="logo">&#x2699; 设置</div>
+    <div class="titlebar-btns">
+      <button class="titlebar-btn" id="btnClose">
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/>
+          <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- 窗口行为 -->
+    <div class="section-title">窗口行为</div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">关闭按钮行为</div>
+        <div class="setting-desc">点击标题栏 X 时执行的操作</div>
+      </div>
+      <div class="select-group" id="closeAction">
+        <div class="select-option active" data-value="minimize">最小化</div>
+        <div class="select-option" data-value="exit">退出</div>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">托盘图标退出</div>
+        <div class="setting-desc">右键托盘退出时直接退出程序</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="trayExit" checked>
+        <span class="sw-track"></span>
+      </label>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- 启动 -->
+    <div class="section-title">启动</div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">开机自启动</div>
+        <div class="setting-desc">Windows 启动时自动运行 AutoDial</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="autoStart">
+        <span class="sw-track"></span>
+      </label>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">隐藏界面启动</div>
+        <div class="setting-desc">开机自启动时不显示主窗口，仅托盘运行</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="silentStart">
+        <span class="sw-track"></span>
+      </label>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- 云中转 -->
+    <div class="section-title">云中转</div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">启用云中转</div>
+        <div class="setting-desc">手机不在同一局域网时通过云服务器中转</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="cloudEnabled">
+        <span class="sw-track"></span>
+      </label>
+    </div>
+
+    <div class="setting-item column" id="cloudServerSection">
+      <div class="setting-info" style="width:100%">
+        <div class="setting-label">云服务器管理</div>
+        <div class="setting-desc">支持多个云服务器，自动遍历连接，成功即停</div>
+      </div>
+      <div id="cloudServerSummary" style="margin-top:8px;font-size:12px;color:var(--gold-light);">未配置服务器</div>
+      <div id="cloudStatus" style="margin-top:6px;font-size:11px;color:var(--text2);"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button id="btnManageServers" style="flex:1;padding:8px;background:var(--gold-dark);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;">管理服务器</button>
+        <button id="btnTestServers" style="padding:8px 14px;background:var(--bg3);color:var(--text);border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;">测试全部</button>
+        <button id="btnFetchServers" style="padding:8px 14px;background:var(--gold-dark);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;">获取列表</button>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- 外观 -->
+    <div class="section-title">外观</div>
+
+    <div class="setting-item column">
+      <div class="setting-info" style="width:100%">
+        <div class="setting-label">主题</div>
+        <div class="setting-desc">选择界面风格和配色方案</div>
+      </div>
+      <div class="theme-grid" id="themeGrid"></div>
+      <div class="mode-row">
+        <div class="setting-label">显示模式</div>
+        <div class="mode-grid" id="modeSelect">
+          <div class="select-option active" data-value="dark">&#x1F311; 暗夜</div>
+          <div class="select-option" data-value="dusk">&#x1F306; 黄昏</div>
+          <div class="select-option" data-value="dawn">&#x1F305; 朝阳</div>
+          <div class="select-option" data-value="twilight">&#x1F307; 暮光</div>
+          <div class="select-option" data-value="warm">&#x1F324; 暖光</div>
+          <div class="select-option" data-value="mist">&#x1F325; 晨雾</div>
+          <div class="select-option" data-value="light">&#x2600; 亮白</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">AutoDial v3.4</div>
+</div>
+
+<!-- 服务器管理弹窗 -->
+<div id="serverModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;justify-content:center;align-items:center;">
+  <div style="background:var(--bg);border:1px solid var(--bg3);border-radius:var(--radius-md);padding:20px;width:380px;max-height:80vh;display:flex;flex-direction:column;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <span style="font-size:16px;color:var(--gold-light);font-weight:600;">云服务器列表</span>
+      <span id="btnCloseModal" style="cursor:pointer;color:var(--text2);font-size:18px;padding:0 4px;">✕</span>
+    </div>
+    <div id="serverList" style="flex:1;overflow-y:auto;min-height:60px;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button id="btnAddServer" style="flex:1;padding:8px;background:var(--gold-dark);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;">+ 添加服务器</button>
+    </div>
+  </div>
+</div>
+
+<!-- 测试结果弹窗 -->
+<div id="testModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;justify-content:center;align-items:center;">
+  <div style="background:var(--bg);border:1px solid var(--bg3);border-radius:var(--radius-md);padding:20px;width:380px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <span id="testTitle" style="font-size:16px;color:var(--gold-light);font-weight:600;">正在测试...</span>
+      <span id="btnCloseTest" style="cursor:pointer;color:var(--text2);font-size:18px;padding:0 4px;">✕</span>
+    </div>
+    <div id="testResults"></div>
+  </div>
+</div>
+
+<script>
+/* 初始化主题 */
+if (typeof ThemeEngine !== 'undefined') ThemeEngine.initTheme();
+
+document.getElementById('btnClose').addEventListener('click', () => {
+  window.api.send('close-settings');
+});
+
+// ==================== 主题选择器 ====================
+let currentTheme = 'dark-gold';
+let currentMode = 'dark';
+
+function renderThemeCards() {
+  const grid = document.getElementById('themeGrid');
+  grid.innerHTML = '';
+  THEME_DATA.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'theme-card';
+    card.dataset.id = t.id;
+    // 使用暗色预览
+    const preview = t.dark;
+    card.innerHTML =
+      '<div class="theme-preview">' +
+        '<span style="background:' + preview.gold + '"></span>' +
+        '<span style="background:' + preview.bg + '"></span>' +
+        '<span style="background:' + preview.bg2 + '"></span>' +
+        '<span style="background:' + preview.text + '"></span>' +
+      '</div>' +
+      '<div class="theme-name">' + t.name + '</div>';
+    card.addEventListener('click', () => selectTheme(t.id));
+    grid.appendChild(card);
+  });
+}
+
+function selectTheme(id) {
+  currentTheme = id;
+  document.querySelectorAll('.theme-card').forEach(c =>
+    c.classList.toggle('active', c.dataset.id === id)
+  );
+  window.api.send('change-theme', { id: id });
+  if (typeof ThemeEngine !== 'undefined') {
+    ThemeEngine.applyTheme(id, currentMode);
+  }
+}
+
+// 模式切换
+document.querySelectorAll('#modeSelect .select-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('#modeSelect .select-option').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+    currentMode = opt.dataset.value;
+    window.api.send('change-theme', { id: currentTheme, mode: currentMode });
+    if (typeof ThemeEngine !== 'undefined') {
+      ThemeEngine.applyTheme(currentTheme, currentMode);
+    }
+  });
+});
+
+// ==================== 云服务器管理 ====================
+let cloudServers = [];
+
+function stripCloudPrefix(val) {
+  if (val.startsWith('ws://')) return val.substring(5);
+  if (val.startsWith('wss://')) return val.substring(6);
+  return val;
+}
+
+function updateCloudSummary() {
+  const el = document.getElementById('cloudServerSummary');
+  if (cloudServers.length === 0) {
+    el.textContent = '未配置服务器';
+  } else {
+    el.textContent = cloudServers.length + ' 台服务器 · ' + stripCloudPrefix(cloudServers[0]);
+  }
+}
+
+function saveCloudServers(servers) {
+  // 去重：保留第一个出现的，基于规范化地址（去掉 ws:// 前缀）
+  const seen = new Set();
+  cloudServers = servers.filter(s => {
+    const key = stripCloudPrefix(s);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  updateCloudSummary();
+  const enabled = document.getElementById('cloudEnabled').checked;
+  window.api.send('update-cloud-config', { enabled, servers: cloudServers });
+}
+
+function renderServerList() {
+  const container = document.getElementById('serverList');
+  container.innerHTML = '';
+  if (cloudServers.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text2);padding:20px;font-size:13px;">暂无服务器，点击下方添加</div>';
+    return;
+  }
+  cloudServers.forEach((addr, index) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--bg3);gap:8px;';
+
+    // 序号
+    const idx = document.createElement('span');
+    idx.textContent = index === 0 ? '①' : '②';
+    idx.style.cssText = 'font-size:14px;min-width:20px;color:' + (index === 0 ? 'var(--gold)' : 'var(--text2)') + ';';
+
+    // 地址
+    const addrEl = document.createElement('span');
+    addrEl.textContent = stripCloudPrefix(addr);
+    addrEl.style.cssText = 'flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+
+    // 连接按钮
+    const connBtn = document.createElement('button');
+    connBtn.textContent = '连接';
+    connBtn.style.cssText = 'padding:4px 10px;background:var(--gold-dark);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;';
+    connBtn.addEventListener('click', () => {
+      const enabled = document.getElementById('cloudEnabled').checked;
+      window.api.send('connect-cloud-specific', addr);
+      document.getElementById('cloudStatus').textContent = '正在连接 ' + stripCloudPrefix(addr) + ' ...';
+      document.getElementById('cloudStatus').style.color = 'var(--gold)';
+      document.getElementById('serverModal').style.display = 'none';
+    });
+
+    // 上移按钮
+    row.appendChild(idx);
+    row.appendChild(addrEl);
+    if (index > 0) {
+      const upBtn = document.createElement('span');
+      upBtn.textContent = '↑';
+      upBtn.style.cssText = 'cursor:pointer;color:var(--text2);font-size:16px;padding:0 4px;';
+      upBtn.addEventListener('click', () => {
+        cloudServers.splice(index, 1);
+        cloudServers.splice(index - 1, 0, addr);
+        saveCloudServers(cloudServers);
+        renderServerList();
+      });
+      row.appendChild(upBtn);
+    }
+
+    row.appendChild(connBtn);
+
+    // 删除按钮
+    const delBtn = document.createElement('span');
+    delBtn.textContent = '✕';
+    delBtn.style.cssText = 'cursor:pointer;color:var(--red);font-size:14px;padding:0 4px;';
+    delBtn.addEventListener('click', () => {
+      cloudServers.splice(index, 1);
+      saveCloudServers(cloudServers);
+      renderServerList();
+    });
+    row.appendChild(delBtn);
+
+    container.appendChild(row);
+  });
+}
+
+document.getElementById('btnManageServers').addEventListener('click', () => {
+  renderServerList();
+  document.getElementById('serverModal').style.display = 'flex';
+});
+document.getElementById('btnCloseModal').addEventListener('click', () => {
+  document.getElementById('serverModal').style.display = 'none';
+});
+
+document.getElementById('btnAddServer').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '如: 1.2.3.4:35430';
+  input.style.cssText = 'width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--bg3);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none;margin-bottom:10px;';
+
+  const listEl = document.getElementById('serverList');
+  listEl.insertBefore(input, listEl.firstChild);
+  input.focus();
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const val = input.value.trim();
+      const normalizedVal = stripCloudPrefix(val);
+      const exists = cloudServers.some(s => stripCloudPrefix(s) === normalizedVal);
+      if (val && !exists) {
+        cloudServers.push(val);
+        saveCloudServers(cloudServers);
+        renderServerList();
+      } else if (exists) {
+        // 提示已存在 - 临时显示
+        input.style.borderColor = 'var(--red)';
+        setTimeout(() => { input.style.borderColor = 'var(--bg3)'; }, 1000);
+      }
+    }
+  });
+});
+
+// 测试全部
+document.getElementById('btnTestServers').addEventListener('click', async () => {
+  if (cloudServers.length === 0) return;
+  const modal = document.getElementById('testModal');
+  const resultsEl = document.getElementById('testResults');
+  const titleEl = document.getElementById('testTitle');
+  modal.style.display = 'flex';
+  titleEl.textContent = '正在测试...';
+
+  const results = await window.api.invoke('test-cloud-servers', cloudServers);
+  resultsEl.innerHTML = '';
+  results.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:6px 0;font-size:13px;color:' +
+      (r.ok ? 'var(--green)' : 'var(--red)') + ';';
+    row.textContent = (i + 1) + '. ' + stripCloudPrefix(r.addr) + '  ' +
+      (r.ok ? '✅ ' + r.ms + 'ms' : '❌ ' + (r.error || '不可连接'));
+    resultsEl.appendChild(row);
+  });
+  titleEl.textContent = '测试完成';
+});
+document.getElementById('btnCloseTest').addEventListener('click', () => {
+  document.getElementById('testModal').style.display = 'none';
+});
+
+// ==================== 加载设置 ====================
+async function loadSettings() {
+  try {
+    const s = await window.api.invoke('get-settings') || {};
+
+    // 关闭按钮行为
+    document.querySelectorAll('#closeAction .select-option').forEach(opt => {
+      opt.classList.toggle('active', opt.dataset.value === (s.closeAction || 'minimize'));
+    });
+    // 托盘退出
+    document.getElementById('trayExit').checked = s.trayExit !== false;
+    // 开机自启动
+    document.getElementById('autoStart').checked = s.autoStart || false;
+    // 隐藏界面启动
+    document.getElementById('silentStart').checked = s.silentStart || false;
+    // 云中转
+    document.getElementById('cloudEnabled').checked = s.cloudEnabled || false;
+    // 加载多云服务器列表
+    cloudServers = Array.isArray(s.cloudServers) ? s.cloudServers :
+      (s.cloudServer ? [s.cloudServer] : []);
+    updateCloudSummary();
+    document.getElementById('cloudServerSection').style.opacity = (s.cloudEnabled ? '1' : '0.5');
+    // 主题设置
+    currentTheme = s.theme || 'dark-gold';
+    currentMode = s.mode || 'dark';
+    // 兼容旧版模式名称
+    const modeCompat = { 'auto': 'dawn' };
+    if (modeCompat[currentMode]) {
+      currentMode = modeCompat[currentMode];
+      saveSetting('mode', currentMode);
+    }
+    document.querySelectorAll('.theme-card').forEach(c =>
+      c.classList.toggle('active', c.dataset.id === currentTheme)
+    );
+    document.querySelectorAll('#modeSelect .select-option').forEach(o =>
+      o.classList.toggle('active', o.dataset.value === currentMode)
+    );
+  } catch (e) {}
+}
+
+// ==================== 保存设置 ====================
+function saveSetting(key, value) {
+  window.api.send('save-setting', { key, value });
+}
+
+// ==================== 关闭行为选择 ====================
+document.querySelectorAll('#closeAction .select-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('#closeAction .select-option').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+    saveSetting('closeAction', opt.dataset.value);
+  });
+});
+
+// ==================== 开关 ====================
+document.getElementById('trayExit').addEventListener('change', function() {
+  saveSetting('trayExit', this.checked);
+});
+
+document.getElementById('autoStart').addEventListener('change', function() {
+  saveSetting('autoStart', this.checked);
+  window.api.send('set-auto-start', this.checked);
+});
+
+document.getElementById('silentStart').addEventListener('change', function() {
+  saveSetting('silentStart', this.checked);
+});
+
+// ==================== 云中转开关 ====================
+document.getElementById('cloudEnabled').addEventListener('change', function() {
+  const enabled = this.checked;
+  saveCloudServers(cloudServers);
+  window.api.send('update-cloud-config', { enabled, servers: cloudServers });
+  document.getElementById('cloudServerSection').style.opacity = enabled ? '1' : '0.5';
+  if (enabled && cloudServers.length === 0) {
+    document.getElementById('cloudStatus').textContent = '请先添加云服务器地址';
+    document.getElementById('cloudStatus').style.color = 'var(--red)';
+  }
+});
+
+// 监听云端状态
+if (typeof window !== 'undefined' && window.api) {
+  window.api.on('cloud-status', (data) => {
+    const statusEl = document.getElementById('cloudStatus');
+    if (!statusEl) return;
+    if (data.connected) {
+      statusEl.textContent = '✅ 已连接: ' + stripCloudPrefix(data.server || '');
+      statusEl.style.color = 'var(--green)';
+    } else if (data.enabled && data.servers && data.servers.length > 0) {
+      statusEl.textContent = '遍历连接中...';
+      statusEl.style.color = 'var(--gold)';
+    } else if (data.enabled) {
+      statusEl.textContent = '';
+    } else {
+      statusEl.textContent = '';
+    }
+    // 更新服务器列表（可能被其他地方修改）
+    if (data.servers && data.servers.length > 0) {
+      cloudServers = data.servers;
+      updateCloudSummary();
+    }
+  });
+}
+
+// 监听来自其他窗口的主题变更
+if (typeof window !== 'undefined' && window.api) {
+  window.api.on('theme-changed', (data) => {
+    currentTheme = data.theme || data.id;
+    currentMode = data.mode;
+    document.querySelectorAll('.theme-card').forEach(c =>
+      c.classList.toggle('active', c.dataset.id === currentTheme)
+    );
+    document.querySelectorAll('#modeSelect .select-option').forEach(o =>
+      o.classList.toggle('active', o.dataset.value === currentMode)
+    );
+  });
+}
+
+renderThemeCards();
+loadSettings();
+</script>
+</body>
+</html>
+
+<script>
+// 获取服务器列表按钮（支持多源：GitHub Gist + 码云 Gitee）
+document.getElementById('btnFetchServers')?.addEventListener('click', async () => {
+  const sources = [
+    { name: 'GitHub', url: 'https://gist.githubusercontent.com/ztj555/cb6a6bb0ddbe3d4e651d5bb3411777d5/raw/AutoDialservers.txt' },
+    { name: '码云', url: 'https://gitee.com/zuo-tingjun/AutoDialserverslist/raw/master/servers.txt' }
+  ];
+
+  const allServers = new Set();  // 用于去重
+  const results = [];
+
+  for (const src of sources) {
+    try {
+      const res = await Promise.race([
+        fetch(src.url),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('超时')), 5000))
+      ]);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      const servers = text.trim().split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'));
+      servers.forEach(s => allServers.add(s));
+      results.push('✅ ' + src.name + '：获取 ' + servers.length + ' 个');
+    } catch (e) {
+      results.push('❌ ' + src.name + '：' + e.message);
+    }
+  }
+
+  if (allServers.size === 0) {
+    alert('所有来源都获取失败：\n' + results.join('\n'));
+    return;
+  }
+
+  // 合并到现有列表（规范化地址后去重：去掉 ws:// / wss:// 前缀）
+  let addedCount = 0;
+  allServers.forEach(server => {
+    const normalized = stripCloudPrefix(server);
+    const exists = cloudServers.some(s => stripCloudPrefix(s) === normalized);
+    if (!exists) {
+      cloudServers.push(server);
+      addedCount++;
+    }
+  });
+
+  // 保存到主进程
+  saveCloudServers(cloudServers);
+
+  alert('获取完成（已自动去重）：\n' + results.join('\n') + '\n\n新增 ' + addedCount + ' 个服务器（总计 ' + cloudServers.length + ' 个）');
+  // 刷新显示
+  renderServerList();
+  updateCloudSummary();
+});
+</script>

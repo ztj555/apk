@@ -1,0 +1,49 @@
+{
+  "name": "autodial-pc",
+  "version": "3.0.0",
+  "description": "AutoDial 电脑端 - 一键拨号 (Electron)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build-win": "electron-builder --win --x64",
+    "dist": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.autodial.pc",
+    "productName": "AutoDial",
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "sign": null,
+      "signingHashAlgorithms": null,
+      "certificateFile": null
+    },
+    "portable": {
+      "artifactName": "AutoDial-PC.exe"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "node_modules/**/*"
+    ],
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    }
+  },
+  "dependencies": {
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.0.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  }
+}

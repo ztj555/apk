@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoDial 发短信</title>
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #F0C040;
+    --gold-dark: #8B6914;
+    --bg: #111318;
+    --bg2: #1A1D24;
+    --bg3: #22262F;
+    --text: #E8DCC8;
+    --text2: #A09070;
+    --green: #2ECC71;
+    --red: #E74C3C;
+    --radius-sm: 5px;
+    --radius-md: 10px;
+    --radius-lg: 24px;
+    --shadow: none;
+    --font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    --gradient-green: linear-gradient(135deg, #27AE60, #1E8449);
+    --gradient-red: linear-gradient(135deg, #C0392B, #96281B);
+    --glow-text: none;
+    --floatbar-bg: rgba(26, 29, 36, 0.72);
+    --floatbar-border: rgba(201, 168, 76, 0.25);
+    --floatbar-blur: blur(20px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-family);
+    overflow: hidden;
+    user-select: none;
+  }
+  .wrap {
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 标题栏 */
+  .titlebar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--gold-dark);
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+    height: 36px;
+  }
+  .titlebar .logo {
+    padding-left: 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gold-light);
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .titlebar-btns {
+    display: flex;
+    margin-left: auto;
+    height: 100%;
+    -webkit-app-region: no-drag;
+  }
+  .titlebar-btn {
+    width: 46px; height: 36px;
+    background: none; border: none;
+    color: var(--text2);
+    font-size: 10px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s;
+    -webkit-app-region: no-drag;
+  }
+  .titlebar-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+  .titlebar-btn.close:hover { background: #C42B1C; color: white; }
+
+  /* 主体 */
+  .body {
+    flex: 1;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+  }
+  .body::-webkit-scrollbar { width: 3px; }
+  .body::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+
+  /* 收件人区域 */
+  .field-label {
+    font-size: 11px;
+    color: var(--text2);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .recipient-box {
+    background: var(--bg2);
+    border: 2px solid var(--bg3);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: border-color 0.2s;
+  }
+  .recipient-box:focus-within { border-color: var(--gold); }
+  .recipient-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .recipient-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--gold-light);
+    letter-spacing: 2px;
+    caret-color: var(--gold);
+  }
+  .recipient-input::placeholder { color: var(--text2); font-size: 14px; font-weight: 400; letter-spacing: 1px; }
+
+  /* 短信内容 */
+  .sms-content {
+    flex: 1;
+    background: var(--bg2);
+    border: 2px solid var(--gold-dark);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    font-size: 15px;
+    color: var(--text);
+    font-family: var(--font-family);
+    resize: none;
+    outline: none;
+    line-height: 1.6;
+    min-height: 120px;
+    transition: border-color 0.2s;
+  }
+  .sms-content:focus { border-color: var(--gold); }
+  .sms-content::placeholder { color: var(--text2); font-size: 13px; }
+
+  /* 字数统计 */
+  .char-count {
+    font-size: 11px;
+    color: var(--text2);
+    text-align: right;
+    margin-top: -6px;
+  }
+  .char-count.warn { color: var(--red); }
+
+  /* 发送按钮 */
+  .send-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #C9A84C, #8B6914);
+    border: none;
+    border-radius: var(--radius-md);
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .send-btn:hover { filter: brightness(1.15); box-shadow: 0 6px 18px rgba(201,168,76,0.35); }
+  .send-btn:active { transform: scale(0.97); }
+  .send-btn:disabled {
+    background: var(--bg3);
+    color: var(--red);
+    cursor: default;
+    opacity: 0.7;
+    font-size: 14px;
+  }
+  .send-btn.sending {
+    background: var(--bg3);
+    color: var(--text2);
+    cursor: wait;
+  }
+
+  /* 快捷短信模板 */
+  .quick-templates {
+    flex-shrink: 0;
+  }
+  .quick-templates .field-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .tpl-manage-btn {
+    font-size: 10px;
+    color: var(--text2);
+    cursor: pointer;
+    background: none;
+    border: none;
+    letter-spacing: 0;
+    text-transform: none;
+    transition: color 0.15s;
+  }
+  .tpl-manage-btn:hover { color: var(--gold); }
+  .tpl-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tpl-tag {
+    background: var(--bg2);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-md);
+    padding: 5px 10px;
+    font-size: 11px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tpl-tag:hover { border-color: var(--gold); color: var(--gold-light); background: rgba(201,168,76,0.08); }
+  .tpl-tag:active { transform: scale(0.95); }
+
+  /* 模板管理弹窗 */
+  .tpl-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+  }
+  .tpl-modal-overlay.show { display: flex; }
+  .tpl-modal {
+    background: var(--bg);
+    border: 1px solid var(--gold-dark);
+    border-radius: var(--radius-lg);
+    width: 340px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+  .tpl-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--bg3);
+    flex-shrink: 0;
+  }
+  .tpl-modal-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gold-light);
+    letter-spacing: 1px;
+  }
+  .tpl-modal-close {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s;
+  }
+  .tpl-modal-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+  .tpl-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .tpl-modal-body::-webkit-scrollbar { width: 3px; }
+  .tpl-modal-body::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+  .tpl-edit-item {
+    background: var(--bg2);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .tpl-edit-item input,
+  .tpl-edit-item textarea {
+    background: var(--bg);
+    border: 1px solid var(--bg3);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font-family);
+    outline: none;
+    resize: none;
+    transition: border-color 0.2s;
+  }
+  .tpl-edit-item input:focus,
+  .tpl-edit-item textarea:focus { border-color: var(--gold); }
+  .tpl-edit-item input::placeholder,
+  .tpl-edit-item textarea::placeholder { color: var(--text2); font-size: 11px; }
+  .tpl-edit-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .tpl-edit-save {
+    background: var(--gold-dark);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 4px 12px;
+    color: white;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tpl-edit-save:hover { background: var(--gold); }
+  .tpl-edit-del {
+    background: none;
+    border: 1px solid var(--red);
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+    color: var(--red);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tpl-edit-del:hover { background: rgba(231,76,60,0.15); }
+  .tpl-modal-footer {
+    padding: 10px 16px;
+    border-top: 1px solid var(--bg3);
+    flex-shrink: 0;
+  }
+  .tpl-add-btn {
+    width: 100%;
+    background: none;
+    border: 1px dashed var(--gold-dark);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    color: var(--gold);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tpl-add-btn:hover { border-color: var(--gold); background: rgba(201,168,76,0.08); }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 12px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--bg3); border: 1px solid var(--gold-dark);
+    border-radius: var(--radius-md); padding: 8px 18px;
+    font-size: 12px; color: var(--text);
+    transition: transform 0.25s; z-index: 999; white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
+</style>
+<script src="../themes/theme-data.js"></script>
+<script src="js/theme.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <!-- 标题栏 -->
+  <div class="titlebar">
+    <div class="logo">&#x1F4AC; 发短信</div>
+    <div class="titlebar-btns">
+      <button class="titlebar-btn" id="btnMinimize" title="最小化"><svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg></button>
+      <button class="titlebar-btn close" id="btnClose" title="关闭"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- 收件人 -->
+    <div class="field-label">&#x1F4E6; 收件人</div>
+    <div class="recipient-box">
+      <span class="recipient-icon">&#x1F4F1;</span>
+      <input type="text" class="recipient-input" id="recipientInput" placeholder="输入收件人号码..." inputmode="tel" autocomplete="off" maxlength="20">
+    </div>
+
+    <!-- 短信内容 -->
+    <div class="field-label">&#x270D;&#xFE0F; 短信内容</div>
+    <textarea class="sms-content" id="smsContent" placeholder="请输入短信内容..." maxlength="500"></textarea>
+    <div class="char-count" id="charCount">0 / 500</div>
+
+    <!-- 快捷模板 -->
+    <div class="quick-templates">
+      <div class="field-label">
+        <span>&#x26A1; 快捷模板</span>
+        <button class="tpl-manage-btn" id="tplManageBtn">管理</button>
+      </div>
+      <div class="tpl-list" id="tplList"></div>
+    </div>
+
+    <!-- 发送按钮 -->
+    <button class="send-btn" id="sendBtn" disabled>&#x1F4E8; 请输入内容</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- 模板管理弹窗 -->
+<div class="tpl-modal-overlay" id="tplModalOverlay">
+  <div class="tpl-modal">
+    <div class="tpl-modal-header">
+      <span class="tpl-modal-title">管理快捷模板</span>
+      <button class="tpl-modal-close" id="tplModalClose">&times;</button>
+    </div>
+    <div class="tpl-modal-body" id="tplModalBody"></div>
+    <div class="tpl-modal-footer">
+      <button class="tpl-add-btn" id="tplAddBtn">+ 添加新模板</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* window.api 通过 preload.js contextBridge 注入 */
+
+let currentNumber = '';
+let isSending = false;
+let phoneConnected = false;
+
+// ==================== 标题栏 ====================
+document.getElementById('btnMinimize').addEventListener('click', () => {
+  window.api.send('window-control', 'minimize');
+});
+document.getElementById('btnClose').addEventListener('click', () => {
+  // 关闭短信窗口 - 用 BrowserWindow.close()
+  window.close();
+});
+
+// ==================== 接收号码 ====================
+const recipientInput = document.getElementById('recipientInput');
+
+window.api.on('sms-number', (number) => {
+  if (number) {
+    recipientInput.value = number;
+  }
+  updateSendBtn();
+});
+
+// 接收预填内容（从主窗口模板点击触发）
+window.api.on('sms-content', (content) => {
+  if (content) {
+    smsContent.value = content;
+    smsContent.dispatchEvent(new Event('input'));
+  }
+});
+
+// 监听手机连接状态
+window.api.on('status-update', (data) => {
+  phoneConnected = !!data.connected;
+  updateSendBtn();
+});
+
+// 收件人输入实时同步
+recipientInput.addEventListener('input', () => {
+  currentNumber = recipientInput.value.trim().replace(/\s/g, '');
+  updateSendBtn();
+});
+
+// ==================== 短信内容输入 ====================
+const smsContent = document.getElementById('smsContent');
+const charCount = document.getElementById('charCount');
+const sendBtn = document.getElementById('sendBtn');
+
+smsContent.addEventListener('input', () => {
+  const len = smsContent.value.length;
+  charCount.textContent = len + ' / 500';
+  charCount.className = 'char-count' + (len > 450 ? ' warn' : '');
+  updateSendBtn();
+});
+
+function updateSendBtn() {
+  if (isSending) return;
+  currentNumber = recipientInput.value.trim().replace(/\s/g, '');
+  const hasContent = smsContent.value.trim().length > 0;
+  const hasNumber = currentNumber.length > 0;
+  sendBtn.disabled = !(hasContent && hasNumber && phoneConnected);
+  if (sendBtn.disabled) {
+    if (!phoneConnected) {
+      sendBtn.textContent = '\uD83D\uDCF1 \u8BF7\u5148\u8FDE\u63A5\u624B\u673A';
+    } else if (!hasNumber) {
+      sendBtn.textContent = '\uD83D\uDCF1 \u8BF7\u8F93\u5165\u53F7\u7801';
+    } else {
+      sendBtn.textContent = '\u270D\uFE0F \u8BF7\u8F93\u5165\u5185\u5BB9';
+    }
+  } else {
+    sendBtn.innerHTML = '\uD83D\uDCE8 \u53D1\u9001';
+  }
+}
+
+// ==================== 发送 ====================
+sendBtn.addEventListener('click', () => {
+  const content = smsContent.value.trim();
+  currentNumber = recipientInput.value.trim().replace(/\s/g, '');
+  if (!content || !currentNumber) return;
+
+  isSending = true;
+  sendBtn.disabled = true;
+  sendBtn.className = 'send-btn sending';
+  sendBtn.innerHTML = '<span>&#x23F3;</span> \u7B49\u5F85\u624B\u673A\u786E\u8BA4...';
+
+  window.api.send('send-sms', { number: currentNumber, content: content });
+  showToast('\u5DF2\u53D1\u9001\u5230\u624B\u673A\uFF0C\u7B49\u5F85\u786E\u8BA4...');
+});
+
+// ==================== 监听短信结果 ====================
+window.api.on('sms-result', (data) => {
+  isSending = false;
+  const btn = document.getElementById('sendBtn');
+  btn.className = 'send-btn';
+
+  if (data.status === 'sent') {
+    showToast('\u2705 \u77ED\u4FE1\u53D1\u9001\u6210\u529F', 'success');
+    btn.innerHTML = '&#x2705; \u53D1\u9001\u6210\u529F';
+    btn.disabled = true;
+    // 2秒后重置
+    setTimeout(() => {
+      smsContent.value = '';
+      charCount.textContent = '0 / 500';
+      updateSendBtn();
+    }, 2000);
+  } else if (data.status === 'cancelled') {
+    showToast('\u274C \u7528\u6237\u53D6\u6D88', 'error');
+    updateSendBtn();
+  } else {
+    showToast('\u274C \u53D1\u9001\u5931\u8D25', 'error');
+    updateSendBtn();
+  }
+});
+
+// ==================== Toast ====================
+let toastTimer = null;
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 2500);
+}
+
+// ==================== 快捷短信模板 ====================
+const TPL_STORAGE_KEY = 'autodial_sms_templates';
+const DEFAULT_TEMPLATES = [
+  { id: 1, title: '回访问候', content: '您好，我是之前联系过您的客服，请问您对我们产品还有什么疑问吗？' },
+  { id: 2, title: '催办提醒', content: '您好，温馨提醒您，您的业务办理进度已更新，请及时查看。' },
+  { id: 3, title: '会议通知', content: '您好，我们将于明天上午10点召开线上会议，届时请准时参加。' },
+  { id: 4, title: '感谢回复', content: '感谢您的咨询与支持，如有其他问题随时联系我们，祝您生活愉快！' },
+  { id: 5, title: '节日祝福', content: '值此佳节来临之际，祝您及家人节日快乐，万事如意！' }
+];
+
+function loadTemplates() {
+  try {
+    const raw = localStorage.getItem(TPL_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+}
+
+function saveTemplates(templates) {
+  try { localStorage.setItem(TPL_STORAGE_KEY, JSON.stringify(templates)); } catch (e) {}
+}
+
+function renderTemplateTags() {
+  const templates = loadTemplates();
+  const container = document.getElementById('tplList');
+  container.innerHTML = '';
+  templates.forEach(tpl => {
+    const tag = document.createElement('div');
+    tag.className = 'tpl-tag';
+    tag.textContent = tpl.title;
+    tag.title = tpl.content;
+    tag.addEventListener('click', () => {
+      smsContent.value = tpl.content;
+      smsContent.dispatchEvent(new Event('input'));
+      smsContent.focus();
+    });
+    container.appendChild(tag);
+  });
+}
+
+// ==================== 模板管理弹窗 ====================
+const tplOverlay = document.getElementById('tplModalOverlay');
+const tplModalBody = document.getElementById('tplModalBody');
+
+document.getElementById('tplManageBtn').addEventListener('click', openTplModal);
+document.getElementById('tplModalClose').addEventListener('click', closeTplModal);
+document.getElementById('tplAddBtn').addEventListener('click', () => addTplEditItem(null));
+tplOverlay.addEventListener('click', (e) => {
+  if (e.target === tplOverlay) closeTplModal();
+});
+
+function openTplModal() {
+  tplModalBody.innerHTML = '';
+  const templates = loadTemplates();
+  templates.forEach(tpl => addTplEditItem(tpl));
+  tplOverlay.classList.add('show');
+}
+
+function closeTplModal() {
+  tplOverlay.classList.remove('show');
+  renderTemplateTags();
+}
+
+function addTplEditItem(tpl) {
+  const item = document.createElement('div');
+  item.className = 'tpl-edit-item';
+  item.innerHTML =
+    '<input type="text" class="tpl-edit-title" placeholder="模板名称" maxlength="20" value="' + (tpl ? tpl.title.replace(/"/g, '&quot;') : '') + '">' +
+    '<textarea class="tpl-edit-content" placeholder="模板内容" rows="2" maxlength="500">' + (tpl ? tpl.content : '') + '</textarea>' +
+    '<div class="tpl-edit-row">' +
+      '<button class="tpl-edit-del">' + (tpl ? '删除' : '取消') + '</button>' +
+      '<button class="tpl-edit-save">保存</button>' +
+    '</div>';
+  tplModalBody.appendChild(item);
+
+  // 保存
+  item.querySelector('.tpl-edit-save').addEventListener('click', () => {
+    const title = item.querySelector('.tpl-edit-title').value.trim();
+    const content = item.querySelector('.tpl-edit-content').value.trim();
+    if (!title || !content) { showToast('名称和内容不能为空', 'error'); return; }
+    const templates = loadTemplates();
+    if (tpl) {
+      const idx = templates.findIndex(t => t.id === tpl.id);
+      if (idx >= 0) { templates[idx].title = title; templates[idx].content = content; }
+    } else {
+      const newId = templates.length > 0 ? Math.max(...templates.map(t => t.id)) + 1 : 1;
+      templates.push({ id: newId, title, content });
+    }
+    saveTemplates(templates);
+    item.remove();
+    showToast('已保存', 'success');
+  });
+
+  // 删除/取消
+  item.querySelector('.tpl-edit-del').addEventListener('click', () => {
+    if (tpl) {
+      const templates = loadTemplates();
+      saveTemplates(templates.filter(t => t.id !== tpl.id));
+      showToast('已删除', 'success');
+    }
+    item.remove();
+  });
+}
+
+// 初始化模板
+renderTemplateTags();
+
+// ==================== 快捷键 ====================
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.ctrlKey) {
+    if (!sendBtn.disabled) sendBtn.click();
+  }
+  if (e.key === 'Escape') {
+    window.close();
+  }
+});
+
+// 初始化主题
+if (typeof ThemeEngine !== 'undefined') ThemeEngine.initTheme();
+</script>
+</body>
+</html>

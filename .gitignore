@@ -1,0 +1,43 @@
+# Android
+*.apk
+*.ap_
+*.dex
+*.class
+*.apk
+*.ap_
+
+
+# Gradle files
+.gradle/
+build/
+*/build/
+**/*.apk
+**/*.ap_
+local.properties
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# WorkBuddy
+.workbuddy/
+
+# Chrome Extension build files
+*.crx
+*.pem
+
+# Temporary files
+*.tmp
+*.bak

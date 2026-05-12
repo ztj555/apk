@@ -1,0 +1,440 @@
+"""
+AutoDial 云中转服务器 - Python 版
+功能：WebSocket 中转 + 系统托盘图标，打包为单个 EXE
+依赖：websockets, pystray, Pillow
+"""
+
+import asyncio
+import json
+import logging
+import sys
+import os
+import signal
+import threading
+from collections import defaultdict
+from datetime import datetime
+
+import websockets
+from websockets.legacy.server import serve
+
+# ==================== 配置 ====================
+DEFAULT_PORT = 35430
+PORT = DEFAULT_PORT
+
+# 解析命令行参数
+for i, arg in enumerate(sys.argv[1:]):
+    if arg in ('--port', '-p') and i + 1 < len(sys.argv) - 1:
+        try:
+            PORT = int(sys.argv[i + 2])
+        except ValueError:
+            pass
+
+# ==================== 日志 ====================
+log_file_path = None
+
+def setup_logging():
+    global log_file_path
+    app_data = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')),
+                            'autodial-cloud-relay')
+    os.makedirs(app_data, exist_ok=True)
+    log_file_path = os.path.join(app_data, 'cloud-relay.log')
+
+    logger = logging.getLogger('relay')
+    logger.setLevel(logging.INFO)
+
+    # 文件日志
+    fh = logging.FileHandler(log_file_path, encoding='utf-8')
+    fh.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s',
+                                       datefmt='%Y-%m-%dT%H:%M:%S'))
+    logger.addHandler(fh)
+
+    # 控制台日志
+    ch = logging.StreamHandler()
+    ch.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s',
+                                       datefmt='%H:%M:%S'))
+    logger.addHandler(ch)
+    return logger
+
+log = setup_logging()
+
+# ==================== PIN 分组管理 ====================
+class PinGroup:
+    def __init__(self):
+        self.pcs = set()      # websocket connections
+        self.phones = set()   # websocket connections
+
+# pin -> PinGroup
+pin_groups: dict[str, PinGroup] = defaultdict(PinGroup)
+
+# websocket -> metadata
+ws_meta: dict = {}  # ws -> {pin, role, ip, device_name, connected_at, last_message_time}
+
+def get_group(pin):
+    if pin not in pin_groups:
+        pin_groups[pin] = PinGroup()
+    return pin_groups[pin]
+
+def remove_from_group(ws):
+    meta = ws_meta.get(ws)
+    if not meta or not meta.get('pin'):
+        return
+    pin = meta['pin']
+    group = pin_groups.get(pin)
+    if not group:
+        return
+    group.pcs.discard(ws)
+    group.phones.discard(ws)
+    if not group.pcs and not group.phones:
+        del pin_groups[pin]
+
+# ==================== 心跳超时检测 ====================
+HEARTBEAT_TIMEOUT = 90  # 90秒没收到消息就断开
+
+async def check_heartbeats():
+    """定期检查心跳超时，关闭超时的连接"""
+    while True:
+        await asyncio.sleep(30)  # 每30秒检查一次
+        now = datetime.now()
+        to_close = []
+        
+        for ws, meta in list(ws_meta.items()):
+            last_time = meta.get('last_message_time')
+            if last_time:
+                elapsed = (now - last_time).total_seconds()
+                if elapsed > HEARTBEAT_TIMEOUT:
+                    to_close.append((ws, meta, elapsed))
+        
+        for ws, meta, elapsed in to_close:
+            try:
+                await ws.close(1000, f'Heartbeat timeout ({HEARTBEAT_TIMEOUT}s)')
+                log.warning(f'HEARTBEAT_TIMEOUT {meta.get("role", "unknown")} pin={meta.get("pin", "none")} ip={meta.get("ip", "?")} elapsed={elapsed:.0f}s')
+            except Exception:
+                pass
+
+# ==================== 消息转发 ====================
+PHONE_TO_PC_TYPES = {'phone_hello', 'dial_result', 'sms_result', 'ping'}
+PC_TO_PHONE_TYPES = {'auth_ok', 'auth_fail', 'dial', 'sms', 'hangup'}
+
+async def forward_to_pcs(pin, message, exclude_ws=None):
+    group = pin_groups.get(pin)
+    if not group:
+        return
+    data = json.dumps(message, ensure_ascii=False)
+    for pc in list(group.pcs):
+        if pc != exclude_ws:
+            try:
+                await pc.send(data)
+            except Exception:
+                group.pcs.discard(pc)
+
+async def forward_to_phones(pin, message, exclude_ws=None):
+    group = pin_groups.get(pin)
+    if not group:
+        return
+    data = json.dumps(message, ensure_ascii=False)
+    for phone in list(group.phones):
+        if phone != exclude_ws:
+            try:
+                await phone.send(data)
+            except Exception:
+                group.phones.discard(phone)
+
+# ==================== WebSocket 处理 ====================
+server_instance = None
+ws_connections = set()
+
+async def handle_connection(ws, path=None):
+    client_ip = ws.remote_address[0] if ws.remote_address else 'unknown'
+    ws_meta[ws] = {
+        'pin': None,
+        'role': None,
+        'ip': client_ip,
+        'device_name': None,
+        'connected_at': datetime.now().isoformat(),
+        'last_message_time': datetime.now()  # 添加最后消息时间用于心跳超时检测
+    }
+    ws_connections.add(ws)
+
+    log.info(f'CONNECT {client_ip}')
+
+    try:
+        async for raw in ws:
+            try:
+                msg = json.loads(raw)
+                msg_type = msg.get('type', '')
+            except json.JSONDecodeError:
+                continue
+
+            # 更新最后消息时间（用于应用层心跳检测）
+            if ws in ws_meta:
+                ws_meta[ws]['last_message_time'] = datetime.now()
+
+            meta = ws_meta.get(ws, {})
+
+            # ===== 手机端握手 =====
+            if msg_type == 'phone_hello':
+                pin = msg.get('pin', '')
+                if not pin or len(pin) < 4:
+                    await ws.send(json.dumps({'type': 'auth_fail', 'reason': '配对码无效'}))
+                    continue
+                remove_from_group(ws)
+                meta['pin'] = pin
+                meta['role'] = 'phone'
+                meta['device_name'] = msg.get('deviceName', f'Phone-{client_ip[-3:]}')
+                group = get_group(pin)
+                group.phones.add(ws)
+                # 回复手机端认证成功（告知当前在线 PC 数）
+                await ws.send(json.dumps({
+                    'type': 'auth_ok',
+                    'pin': pin,
+                    'pcCount': len(group.pcs)
+                }))
+                # 转发 phone_hello 给同 PIN 的所有 PC
+                await forward_to_pcs(pin, msg, ws)
+                log.info(f'PHONE_HELLO pin={pin} device={meta["device_name"]} ip={client_ip} pcs={len(group.pcs)}')
+                continue
+
+            # ===== PC 端握手 =====
+            if msg_type == 'pc_hello':
+                pin = msg.get('pin', '')
+                if not pin or len(pin) < 4:
+                    await ws.send(json.dumps({'type': 'pc_auth_fail', 'reason': '配对码无效'}))
+                    continue
+                remove_from_group(ws)
+                meta['pin'] = pin
+                meta['role'] = 'pc'
+                meta['device_name'] = msg.get('hostname', f'PC-{client_ip[-3:]}')
+                group = get_group(pin)
+                group.pcs.add(ws)
+                await ws.send(json.dumps({
+                    'type': 'pc_auth_ok',
+                    'pin': pin,
+                    'phoneCount': len(group.phones)
+                }))
+                log.info(f'PC_HELLO pin={pin} hostname={meta["device_name"]} ip={client_ip} phones={len(group.phones)}')
+                continue
+
+            # ===== 未握手则拒绝 =====
+            if not meta.get('pin'):
+                await ws.send(json.dumps({'type': 'error', 'reason': '请先发送 phone_hello 或 pc_hello'}))
+                continue
+
+            pin = meta['pin']
+
+            # ===== 手机→PC 转发 =====
+            if msg_type in PHONE_TO_PC_TYPES:
+                await forward_to_pcs(pin, msg, ws)
+                if msg_type == 'ping':
+                    await ws.send(json.dumps({'type': 'pong'}))
+                    # ping 不记日志，避免刷屏
+                else:
+                    log.info(f'RELAY {msg_type} phone→pc pin={pin}')
+                continue
+
+            # ===== PC→手机 转发 =====
+            if msg_type in PC_TO_PHONE_TYPES:
+                await forward_to_phones(pin, msg, ws)
+                log.info(f'RELAY {msg_type} pc→phone pin={pin}')
+                continue
+
+            log.info(f'UNKNOWN type={msg_type} pin={pin}')
+
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    except Exception as e:
+        log.error(f'Connection error: {e}')
+    finally:
+        remove_from_group(ws)
+        meta = ws_meta.pop(ws, {})
+        ws_connections.discard(ws)
+        log.info(f'DISCONNECT {meta.get("role", "unknown")} pin={meta.get("pin", "none")} ip={meta.get("ip", "?")}')
+
+# ==================== HTTP 健康检查（同端口） ====================
+async def health_check_handler(path, request_headers):
+    """websockets process_request 回调：拦截 HTTP GET /health"""
+    if path == '/health':
+        body = json.dumps({
+            'service': 'AutoDial Cloud Relay',
+            'version': '1.0.0',
+            'groups': len(pin_groups),
+            'connections': len(ws_connections),
+            'port': PORT
+        }, ensure_ascii=False).encode('utf-8')
+        return (200, [('Content-Type', 'application/json')], body)
+    # 其他路径正常走 WebSocket 握手
+    return None
+
+# ==================== 服务器启停 ====================
+async def run_server():
+    global server_instance
+    log.info(f'Starting server on port {PORT}...')
+
+    # 启动心跳检测任务
+    asyncio.create_task(check_heartbeats())
+    log.info(f'Heartbeat checker started (timeout={HEARTBEAT_TIMEOUT}s)')
+
+    async with serve(handle_connection, '0.0.0.0', PORT,
+                     process_request=health_check_handler,
+                     ping_interval=30,
+                     ping_timeout=90,  # 增加 ping 超时到 90 秒
+                     close_timeout=10) as server:
+        server_instance = server
+        log.info(f'Server started on port {PORT}, PID={os.getpid()}')
+
+        # 通知托盘状态更新
+        update_tray_status(True)
+
+        # 保持运行
+        await asyncio.Future()  # 永不完成
+
+async def stop_server():
+    global server_instance
+    if server_instance:
+        log.info('Stopping server...')
+        # 关闭所有连接
+        for ws in list(ws_connections):
+            try:
+                await ws.close(1001, 'server shutting down')
+            except Exception:
+                pass
+        server_instance.close()
+        await server_instance.wait_closed()
+        server_instance = None
+        log.info('Server stopped')
+        update_tray_status(False)
+
+# ==================== 系统托盘 ====================
+tray_icon = None
+server_running = False
+loop = None  # asyncio event loop
+
+def create_tray_icon():
+    """创建托盘图标（绿色圆点）"""
+    from PIL import Image, ImageDraw
+
+    # 32x32 绿色圆点图标
+    img = Image.new('RGBA', (32, 32), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([4, 4, 28, 28], fill=(76, 175, 80, 255))  # 绿色
+    return img
+
+def create_tray_icon_stopped():
+    """创建停止状态图标（灰色圆点）"""
+    from PIL import Image, ImageDraw
+
+    img = Image.new('RGBA', (32, 32), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([4, 4, 28, 28], fill=(158, 158, 158, 255))  # 灰色
+    return img
+
+def update_tray_status(running):
+    """更新托盘图标和菜单"""
+    global server_running, tray_icon
+    server_running = running
+    if tray_icon:
+        try:
+            if running:
+                tray_icon.icon = create_tray_icon()
+                tray_icon.title = f'AutoDial 云中转\n运行中 | 端口 {PORT}'
+            else:
+                tray_icon.icon = create_tray_icon_stopped()
+                tray_icon.title = f'AutoDial 云中转\n已停止 | 端口 {PORT}'
+            tray_icon.menu = create_menu()
+        except Exception as e:
+            log.error(f'Update tray error: {e}')
+
+def create_menu():
+    """创建托盘菜单"""
+    import pystray
+    status_text = '● 运行中' if server_running else '○ 已停止'
+    return pystray.Menu(
+        pystray.MenuItem(f'AutoDial 云中转 - {status_text}', None, enabled=False),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem(f'端口: {PORT}', None, enabled=False),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem('停止服务器' if server_running else '启动服务器',
+                         toggle_server, default=True),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem('打开日志', open_log),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem('退出', quit_app),
+    )
+
+def toggle_server():
+    """切换服务器启停"""
+    global loop
+    if server_running:
+        if loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(stop_server(), loop)
+    else:
+        if loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(start_server_task(), loop)
+
+async def start_server_task():
+    """启动服务器任务"""
+    asyncio.create_task(run_server())
+
+def open_log():
+    """打开日志文件"""
+    if log_file_path and os.path.exists(log_file_path):
+        os.startfile(log_file_path)
+
+def quit_app():
+    """退出应用"""
+    global loop
+    if loop and loop.is_running():
+        asyncio.run_coroutine_threadsafe(shutdown(), loop)
+    else:
+        sys.exit(0)
+
+async def shutdown():
+    """优雅关闭"""
+    await stop_server()
+    if tray_icon:
+        tray_icon.stop()
+    sys.exit(0)
+
+def run_tray():
+    """在主线程运行托盘图标"""
+    global tray_icon
+    import pystray
+
+    tray_icon = pystray.Icon(
+        'AutoDial Cloud Relay',
+        icon=create_tray_icon_stopped(),
+        title=f'AutoDial 云中转\n已停止 | 端口 {PORT}',
+        menu=create_menu()
+    )
+    tray_icon.run()
+
+def run_server_thread():
+    """在线程中运行 asyncio 服务器"""
+    global loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(run_server())
+    except Exception as e:
+        log.error(f'Server error: {e}')
+        update_tray_status(False)
+
+# ==================== 主入口 ====================
+def main():
+    print('')
+    print('========================================')
+    print('  AutoDial Cloud Relay Server')
+    print('========================================')
+    print(f'  Port:     {PORT}')
+    print(f'  PID:      {os.getpid()}')
+    print('========================================')
+    print('')
+
+    # 启动服务器线程
+    server_thread = threading.Thread(target=run_server_thread, daemon=True)
+    server_thread.start()
+
+    # 主线程运行托盘（pystray 要求主线程）
+    run_tray()
+
+if __name__ == '__main__':
+    main()

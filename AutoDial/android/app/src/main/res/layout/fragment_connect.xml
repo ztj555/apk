@@ -1,0 +1,782 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:tag="bg"
+    android:background="#111318"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center_horizontal">
+
+        <!-- 标题 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="⚙️ 设置"
+            android:textSize="28sp"
+            android:tag="goldLight"
+            android:textColor="#F0C040"
+            android:textStyle="bold"
+            android:letterSpacing="0.1" />
+
+        <!-- 状态指示 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/statusDot"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:src="@drawable/dot_gray" />
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="未连接"
+                android:tag="text2"
+                android:textSize="16sp"
+                android:textColor="#A09070" />
+        </LinearLayout>
+
+        <!-- 连接成功横幅 -->
+        <LinearLayout
+            android:id="@+id/connectionBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:tag="bg2"
+            android:background="#1A3A2A"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/bannerText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✅ 已连接到电脑！等待拨号指令..."
+                android:tag="green"
+                android:textColor="#2ECC71"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- ===== 连接设置区域 ===== -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="连接设置"
+            android:tag="text2"
+            android:textColor="#A09070"
+            android:textSize="12sp" />
+
+        <!-- 配对码输入 -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="电脑配对码"
+            android:tag="text2"
+            android:textColor="#605040"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/pinInput"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="6dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:hint="输入电脑屏幕上的4位数字"
+            android:textColorHint="#605040"
+            android:textColor="#E8DCC8"
+            android:textSize="28sp"
+            android:letterSpacing="0.3"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:inputType="number"
+            android:maxLength="4"
+            android:singleLine="true" />
+
+        <!-- 自动发现提示 -->
+        <TextView
+            android:id="@+id/discoveryHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="🔍 请输入配对码开始搜索"
+            android:textColor="#605040"
+            android:textSize="12sp"
+            android:visibility="visible" />
+
+        <!-- 已发现的电脑信息 -->
+        <LinearLayout
+            android:id="@+id/foundPCInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:tag="bg2"
+            android:background="#1A2A1A"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/foundPCText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✅ 发现电脑: 192.168.x.x"
+                android:tag="green"
+                android:textColor="#2ECC71"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- 连接按钮 -->
+        <LinearLayout
+            android:id="@+id/connectBtn"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="16dp"
+            android:tag="goldBtn"
+            android:background="#C9A84C"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/connectBtnText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="连接"
+                android:textColor="#111318"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- ===== 云中转设置区域 ===== -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="云中转"
+            android:tag="text2"
+            android:textColor="#A09070"
+            android:textSize="12sp" />
+
+        <!-- 云中转开关 -->
+        <LinearLayout
+            android:id="@+id/cloudRelayRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="云中转连接"
+                    android:tag="text"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="不在同一WiFi时通过云服务器中转"
+                    android:tag="text2"
+                    android:textColor="#605040"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- 开关 -->
+            <TextView
+                android:id="@+id/cloudRelaySwitch"
+                android:layout_width="52dp"
+                android:layout_height="28dp"
+                android:tag="switchOff"
+                android:background="#3A3A3A"
+                android:gravity="center"
+                android:text="关"
+                android:textColor="#888"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 云服务器管理 -->
+        <LinearLayout
+            android:id="@+id/cloudServerSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- 当前服务器 + 管理按钮 -->
+            <LinearLayout
+                android:id="@+id/cloudServerManageRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:tag="bg2"
+                android:background="#1A1D24"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingTop="14dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="14dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="云服务器"
+                        android:tag="text"
+                        android:textColor="#E8DCC8"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/cloudServerCurrentText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="未配置"
+                        android:tag="text2"
+                        android:textColor="#605040"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- 管理按钮 -->
+                <TextView
+                    android:id="@+id/cloudServerManageBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="28dp"
+                    android:tag="goldBtn"
+                    android:background="#C9A84C"
+                    android:gravity="center"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="管理"
+                    android:textColor="#111318"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+                <!-- 获取列表按钮 -->
+                <TextView
+                    android:id="@+id/fetchServerListBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="28dp"
+                    android:layout_marginStart="8dp"
+                    android:tag="goldBtn"
+                    android:background="#C9A84C"
+                    android:gravity="center"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="获取列表"
+                    android:textColor="#111318"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 云端连接状态 -->
+            <TextView
+                android:id="@+id/cloudStatusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text=""
+                android:textSize="12sp"
+                android:tag="text2"
+                android:textColor="#605040" />
+        </LinearLayout>
+
+        <!-- ===== 其他设置区域 ===== -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="其他设置"
+            android:tag="text2"
+            android:textColor="#A09070"
+            android:textSize="12sp" />
+
+        <!-- 自动连接开关 -->
+        <LinearLayout
+            android:id="@+id/autoConnectRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="自动连接"
+                    android:tag="text"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="断开后自动重连电脑"
+                    android:tag="text2"
+                    android:textColor="#605040"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- 开关 -->
+            <TextView
+                android:id="@+id/autoConnectSwitch"
+                android:layout_width="52dp"
+                android:layout_height="28dp"
+                android:tag="switchOn"
+                android:background="#C9A84C"
+                android:gravity="center"
+                android:text="开"
+                android:textColor="#111318"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 电池优化白名单 -->
+        <LinearLayout
+            android:id="@+id/batteryOptRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="电池优化"
+                    android:tag="text"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/batteryOptStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="检测中..."
+                    android:tag="text2"
+                    android:textColor="#605040"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/batteryOptBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:tag="goldBtn"
+                android:background="#C9A84C"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="去设置"
+                android:textColor="#111318"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/batteryOptOk"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="✅ 已设置"
+                android:tag="green"
+                android:textColor="#2ECC71"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- 拨号自动复制号码 -->
+        <LinearLayout
+            android:id="@+id/autoCopyRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="拨号自动复制号码"
+                    android:tag="text"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="拨号成功后自动复制号码到剪贴板"
+                    android:tag="text2"
+                    android:textColor="#605040"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/autoCopySwitch"
+                android:layout_width="52dp"
+                android:layout_height="28dp"
+                android:tag="switchOn"
+                android:background="#C9A84C"
+                android:gravity="center"
+                android:text="开"
+                android:textColor="#111318"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 拨号动画效果 -->
+        <LinearLayout
+            android:id="@+id/dialAnimationRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="拨号动画效果"
+                    android:tag="text"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/dialAnimationDesc"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="拨通电话时显示动画"
+                    android:tag="text2"
+                    android:textColor="#605040"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- 4档开关 -->
+            <TextView
+                android:id="@+id/dialAnimationSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:minWidth="52dp"
+                android:tag="switchOff"
+                android:background="#3A3A3A"
+                android:gravity="center"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:text="关"
+                android:textColor="#888"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 动画显示文字 -->
+        <LinearLayout
+            android:id="@+id/dialAnimationTextRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="动画显示文字"
+                    android:tag="text"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/dialAnimationTextPreview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="财运+1"
+                    android:tag="text2"
+                    android:textColor="#C9A84C"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- 编辑按钮 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:tag="goldBtn"
+                android:background="#C9A84C"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="编辑"
+                android:textColor="#111318"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 复制号码弹窗提醒 -->
+        <LinearLayout
+            android:id="@+id/copyToastRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="复制号码弹窗提醒"
+                    android:tag="text"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="复制号码后弹出已复制提示"
+                    android:tag="text2"
+                    android:textColor="#605040"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/copyToastSwitch"
+                android:layout_width="52dp"
+                android:layout_height="28dp"
+                android:tag="switchOn"
+                android:background="#C9A84C"
+                android:gravity="center"
+                android:text="开"
+                android:textColor="#111318"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- ===== 外观设置区域 ===== -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="外观"
+            android:tag="text2"
+            android:textColor="#A09070"
+            android:textSize="12sp" />
+
+        <!-- 主题选择入口 -->
+        <LinearLayout
+            android:id="@+id/themeSettingRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:tag="bg2"
+            android:background="#1A1D24"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="主题"
+                    android:tag="text"
+                    android:textColor="#E8DCC8"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/themeCurrentName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="暗金 · 暗夜"
+                    android:tag="text2"
+                    android:textColor="#605040"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- 主题预览色块 -->
+            <LinearLayout
+                android:id="@+id/themePreviewColors"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <View
+                    android:id="@+id/previewGold"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:background="#C9A84C" />
+                <View
+                    android:id="@+id/previewBg"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginStart="3dp"
+                    android:background="#111318" />
+                <View
+                    android:id="@+id/previewBg2"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginStart="3dp"
+                    android:background="#1A1D24" />
+                <View
+                    android:id="@+id/previewText"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginStart="3dp"
+                    android:background="#E8DCC8" />
+            </LinearLayout>
+
+            <!-- 箭头 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="›"
+                android:tag="text2"
+                android:textColor="#A09070"
+                android:textSize="22sp" />
+        </LinearLayout>
+
+        <!-- 关于信息 -->
+        <TextView
+            android:id="@+id/aboutText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="24dp"
+            android:text="跨屏拨号 v3.3\n局域网优先，云中转自动切换"
+            android:textSize="12sp"
+            android:tag="text2"
+            android:textColor="#605040"
+            android:gravity="center" />
+
+    </LinearLayout>
+
+</ScrollView>
