@@ -16,23 +16,22 @@ android {
     }
 
     signingConfigs {
+        def ksFile = System.getenv("KEYSTORE_FILE")
+        def ksPath = (ksFile != null && file(ksFile).exists()) ? ksFile : 'autodial-release.p12'
+        def ksStorePass = System.getenv("KEYSTORE_PASSWORD") ?: 'autodial2024'
+        def ksKeyAlias = System.getenv("KEY_ALIAS") ?: 'autodial'
+        def ksKeyPass = System.getenv("KEY_PASSWORD") ?: 'autodial2024'
         release {
-            def ksFile = System.getenv("KEYSTORE_FILE")
-            if (ksFile != null && file(ksFile).exists()) {
-                storeFile file(ksFile)
-                storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
-                keyAlias System.getenv("KEY_ALIAS") ?: ""
-                keyPassword System.getenv("KEY_PASSWORD") ?: ""
-            }
+            storeFile file(ksPath)
+            storePassword ksStorePass
+            keyAlias ksKeyAlias
+            keyPassword ksKeyPass
         }
         debug {
-            def ksFile = System.getenv("KEYSTORE_FILE")
-            if (ksFile != null && file(ksFile).exists()) {
-                storeFile file(ksFile)
-                storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
-                keyAlias System.getenv("KEY_ALIAS") ?: ""
-                keyPassword System.getenv("KEY_PASSWORD") ?: ""
-            }
+            storeFile file(ksPath)
+            storePassword ksStorePass
+            keyAlias ksKeyAlias
+            keyPassword ksKeyPass
         }
     }
 
@@ -40,16 +39,10 @@ android {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // 只在有签名文件时才配置签名
-            if (System.getenv("KEYSTORE_FILE") != null && file(System.getenv("KEYSTORE_FILE")).exists()) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingConfigs.release
         }
         debug {
-            // 只在有签名文件时才配置签名
-            if (System.getenv("KEYSTORE_FILE") != null && file(System.getenv("KEYSTORE_FILE")).exists()) {
-                signingConfig signingConfigs.debug
-            }
+            signingConfig signingConfigs.debug
         }
     }
 
