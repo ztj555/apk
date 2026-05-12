@@ -20,9 +20,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Decode Keystore
+        working-directory: AutoDial/android/app
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/autodial-release.p12
-          echo "KEYSTORE_FILE=autodial-release.p12" >> $GITHUB_ENV
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > autodial-release.p12
+          echo "KEYSTORE_FILE=AutoDial/android/app/autodial-release.p12" >> $GITHUB_ENV
           echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
           echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
           echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
