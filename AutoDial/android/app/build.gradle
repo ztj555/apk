@@ -40,10 +40,16 @@ android {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            // 只在有签名文件时才配置签名
+            if (System.getenv("KEYSTORE_FILE") != null && file(System.getenv("KEYSTORE_FILE")).exists()) {
+                signingConfig signingConfigs.release
+            }
         }
         debug {
-            signingConfig signingConfigs.debug
+            // 只在有签名文件时才配置签名
+            if (System.getenv("KEYSTORE_FILE") != null && file(System.getenv("KEYSTORE_FILE")).exists()) {
+                signingConfig signingConfigs.debug
+            }
         }
     }
 
