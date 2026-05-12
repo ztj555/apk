@@ -456,25 +456,53 @@ class DialService : Service() {
 
     /**
      * 发送消息给 PC，优先 LAN，其次云端
+     * 发送失败时自动尝试切换通道
      */
     private fun sendToPC(msg: JSONObject) {
         // 优先 LAN
         if (connectionMode == "lan" && webSocket != null) {
             try {
-                webSocket?.send(msg.toString())
-                return
-            } catch (_: Exception) {}
+                val sent = webSocket?.send(msg.toString()) ?: false
+                if (sent) return
+            } catch (_: Exception) {
+                Log.w(TAG, "LAN 发送失败，尝试切换通道")
+                // LAN 发送异常，标记为不可用并切换到云端
+                webSocket = null
+                if (cloudWebSocket != null && cloudConnected) {
+                    connectionMode = "cloud"
+                    handler.post { updateNotification("已切换到云端连接") }
+                } else {
+                    connectionMode = ""
+                    isConnected = false
+                }
+            }
         }
         // 其次云端
         if (connectionMode == "cloud" && cloudWebSocket != null) {
             try {
-                cloudWebSocket?.send(msg.toString())
-                return
+                val sent = cloudWebSocket?.send(msg.toString()) ?: false
+                if (sent) return
+            } catch (_: Exception) {
+                Log.w(TAG, "云端发送失败")
+                cloudWebSocket = null
+                if (connectionMode == "cloud") {
+                    connectionMode = ""
+                    isConnected = false
+                }
+            }
+        }
+        // 最后兜底：尝试两个通道（不管 connectionMode）
+        if (webSocket != null) {
+            try {
+                val sent = webSocket?.send(msg.toString()) ?: false
+                if (sent) return
             } catch (_: Exception) {}
         }
-        // 都不可用，尝试另一个
-        try { webSocket?.send(msg.toString()); return } catch (_: Exception) {}
-        try { cloudWebSocket?.send(msg.toString()); return } catch (_: Exception) {}
+        if (cloudWebSocket != null) {
+            try {
+                cloudWebSocket?.send(msg.toString())
+            } catch (_: Exception) {}
+        }
     }
 
     /**
