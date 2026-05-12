@@ -51,18 +51,12 @@ class DialService : Service() {
 
         var isRunning = false
             private set
-        var isConnected = false
-            private set
-        var serverAddress = ""
-            private set
-        var cloudConnected = false
-            private set
-        /** 当前云中转服务器地址（用于重连） */
-        var currentCloudServer = ""
-            private set
-        /** 当前使用的 PIN（用于重连） */
-        var currentPin = ""
-            private set
+        /** 委托给 ConnectionManager */
+        val isConnected: Boolean get() = _instance?.connectionManager?.isConnected ?: false
+        val serverAddress: String get() = "" // 不再单独追踪，由 ConnectionManager 管理
+        val cloudConnected: Boolean get() = _instance?.connectionManager?.isCloudConnected ?: false
+        val currentCloudServer: String get() = "" // 不再单独追踪
+        val currentPin: String get() = _instance?.let { it.lastPin } ?: ""
 
         fun newIntent(context: Context): Intent = Intent(context, DialService::class.java)
 
@@ -77,26 +71,16 @@ class DialService : Service() {
         internal var _instance: DialService? = null
     }
 
-    private var webSocket: WebSocket? = null
-    private var cloudWebSocket: WebSocket? = null  // 云中转连接
-    /** 当前连接模式: "lan" | "cloud" | "" */
-    var connectionMode = ""
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .pingInterval(30, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .build()
-    private val cloudClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .pingInterval(30, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .build()
-    private val handler = Handler(Looper.getMainLooper())
-    private var reconnectRunnable: Runnable? = null
-    private var cloudReconnectRunnable: Runnable? = null
+    // ==================== ConnectionManager 委托 ====================
+
+    lateinit var connectionManager: ConnectionManager
+        private set
+    var connectionMode: String = ""
+        private set
+
+    private var manualConnecting = false
     private var lastPin = ""
     private var lastIp = ""
-    private var manualConnecting = false
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var callLogDb: CallLogDb
     private var phoneStateListener: PhoneStateListener? = null
@@ -135,46 +119,89 @@ class DialService : Service() {
             // 监听通话状态，通话结束时通知UI刷新通话记录
             registerCallStateListener()
 
-            val prefs = getSharedPreferences("autodial", MODE_PRIVATE)
-            lastIp = prefs.getString("ip", "") ?: ""
-            lastPin = prefs.getString("pin", "") ?: ""
-            serverAddress = lastIp
-
-            val wasConnected = prefs.getBoolean("was_connected", false)
-            if (wasConnected && lastIp.isNotEmpty() && lastPin.isNotEmpty()) {
-                Log.d(TAG, "自动重连到 $lastIp")
-                updateNotification("自动重连中...")
-                connectToServer(lastIp, lastPin, isAutoReconnect = true)
-            }
-
-            // 云中转：如果已配置并启用，自动连接
-            val cloudEnabled = prefs.getBoolean("cloud_enabled", false)
-            val serversJson = prefs.getString("cloud_servers", null)
-            val cloudServer = prefs.getString("cloud_server", "") ?: ""
-
-            // 检查是否有实际配置的服务器
-            val hasConfiguredServers = if (serversJson != null) {
-                try {
-                    val arr = org.json.JSONArray(serversJson)
-                    arr.length() > 0
-                } catch (_: Exception) { false }
-            } else {
-                cloudServer.isNotEmpty()
-            }
-
-            if (cloudEnabled && hasConfiguredServers && lastPin.isNotEmpty()) {
-                if (serversJson != null) {
-                    Log.d(TAG, "自动连接云中转（多服务器模式）")
-                    connectToCloudServersFromList(serversJson, lastPin)
-                } else if (cloudServer.isNotEmpty()) {
-                    Log.d(TAG, "自动连接云中转: $cloudServer")
-                    connectToCloudServer(cloudServer, lastPin)
+            // ==================== 初始化 ConnectionManager ====================
+            connectionManager = ConnectionManager(this)
+            connectionManager.addListener(object : ConnectionManager.ConnectionStateListener {
+                override fun onStateChanged(
+                    newState: ConnectionManager.ConnectionState,
+                    oldState: ConnectionManager.ConnectionState
+                ) {
+                    connectionMode = connectionManager.getTransportMode()
+                    when (newState) {
+                        ConnectionManager.ConnectionState.CONNECTED -> {
+                            updateNotification("已连接到电脑(${connectionMode})")
+                            getSharedPreferences("autodial", MODE_PRIVATE)
+                                .edit().putBoolean("was_connected", true).apply()
+                            notifyConnectionChange(true, null)
+                            notifyCloudStatus(null)
+                        }
+                        ConnectionManager.ConnectionState.DISCONNECTED -> {
+                            if (oldState == ConnectionManager.ConnectionState.CONNECTED) {
+                                updateNotification("连接已断开")
+                                notifyConnectionChange(false, "disconnected")
+                            }
+                        }
+                        ConnectionManager.ConnectionState.CONNECTING -> {
+                            updateNotification("正在连接...")
+                        }
+                        ConnectionManager.ConnectionState.DISCOVERING -> {
+                            updateNotification("正在搜索电脑...")
+                        }
+                    }
                 }
-            } else if (cloudEnabled) {
-                // 没有配置服务器，清除 cloud_enabled 标志
-                Log.w(TAG, "cloud_enabled=true 但没有配置服务器，清除标志")
-                prefs.edit().putBoolean("cloud_enabled", false).apply()
-            }
+
+                override fun onMessageReceived(msg: JSONObject) {
+                    // 业务消息分发（dial, sms, hangup 等）
+                    try {
+                        when (msg.optString("type", "")) {
+                            "dial" -> {
+                                val number = msg.optString("number", "")
+                                if (number.isNotEmpty()) {
+                                    Log.d(TAG, "拨号请求: $number")
+                                    dialNumber(number)
+                                }
+                            }
+                            "sms" -> {
+                                val number = msg.optString("number", "")
+                                val content = msg.optString("content", "")
+                                if (number.isNotEmpty()) {
+                                    Log.d(TAG, "短信请求: $number, 内容长度=${content.length}")
+                                    val intent = Intent(ACTION_SHOW_SMS_CONFIRM).apply {
+                                        putExtra("number", number)
+                                        putExtra("content", content)
+                                        setPackage(packageName)
+                                    }
+                                    sendBroadcast(intent)
+                                }
+                            }
+                            "hangup" -> {
+                                Log.d(TAG, "收到挂断指令")
+                                endCall()
+                            }
+                        }
+                    } catch (e: Exception) { Log.e(TAG, "消息处理失败: ${e.message}") }
+                }
+
+                override fun onError(error: ConnectionManager.ConnectionError) {
+                    when (error) {
+                        is ConnectionManager.ConnectionError.AuthFailed -> {
+                            updateNotification("配对码错误")
+                            notifyConnectionChange(false, "pin_wrong")
+                        }
+                        is ConnectionManager.ConnectionError.Disconnected -> {
+                            updateNotification("连接已断开")
+                            notifyConnectionChange(false, error.reason)
+                        }
+                        else -> {
+                            Log.w(TAG, "Connection error: $error")
+                        }
+                    }
+                }
+            })
+
+            // 自动重连（从保存的配置恢复）
+            connectionManager.loadSavedConfig()
+
         } catch (e: Exception) {
             isRunning = true
             callLogDb = CallLogDb(this)
@@ -189,55 +216,57 @@ class DialService : Service() {
                 "CONNECT" -> {
                     val ip = intent.getStringExtra("ip") ?: ""
                     val pin = intent.getStringExtra("pin") ?: ""
-                    if (ip.isNotEmpty() && pin.isNotEmpty()) {
-                        lastIp = ip
+                    if (pin.isNotEmpty()) {
                         lastPin = pin
-                        serverAddress = ip
+                        lastIp = ip
                         manualConnecting = true
                         getSharedPreferences("autodial", MODE_PRIVATE).edit()
                             .putString("ip", ip).putString("pin", pin).apply()
-                        cancelReconnect()
-                        connectToServer(ip, pin, isAutoReconnect = false)
+                        connectionManager.connect(pin, ip)
                     }
                 }
                 "DISCONNECT" -> {
                     manualConnecting = false
                     getSharedPreferences("autodial", MODE_PRIVATE).edit()
                         .putBoolean("was_connected", false).apply()
-                    disconnect()
+                    connectionManager.disconnect()
+                    updateNotification("跨屏拨号 运行中")
                 }
                 "CONNECT_CLOUD" -> {
                     val pin = intent.getStringExtra("pin") ?: lastPin
                     if (pin.isEmpty()) return START_STICKY
                     lastPin = pin
 
-                    // 检查是否有 cloud_servers 列表（多服务器模式）
                     val serversJson = intent.getStringExtra("cloud_servers")
                     if (serversJson != null) {
-                        // 多服务器模式：保存列表，从第一个开始遍历
                         getSharedPreferences("autodial", MODE_PRIVATE).edit()
                             .putBoolean("cloud_enabled", true)
                             .putString("cloud_servers", serversJson)
                             .putString("pin", pin)
                             .apply()
-                        connectToCloudServersFromList(serversJson, pin)
+                        val arr = org.json.JSONArray(serversJson)
+                        val servers = (0 until arr.length()).map { arr.getString(it) }
+                        connectionManager.setCloudServers(servers)
+                        connectionManager.connect(pin)
                     } else {
-                        // 单服务器模式（手动切换）：直接连接指定服务器
                         val server = intent.getStringExtra("cloud_server") ?: ""
                         if (server.isNotEmpty()) {
-                            currentCloudServer = server
-                            currentPin = pin
                             getSharedPreferences("autodial", MODE_PRIVATE).edit()
                                 .putBoolean("cloud_enabled", true)
                                 .putString("cloud_server", server)
                                 .putString("pin", pin)
                                 .apply()
-                            connectToCloudServer(server, pin)
+                            connectionManager.setCloudServers(listOf(server))
+                            connectionManager.connect(pin)
                         }
                     }
                 }
                 "DISCONNECT_CLOUD" -> {
-                    disconnectCloud()
+                    // 统一 disconnect 已覆盖，这里仅更新配置
+                    getSharedPreferences("autodial", MODE_PRIVATE).edit()
+                        .putBoolean("cloud_enabled", false).apply()
+                    // 注意：不调用 disconnect()，只断云端由 ConnectionManager 内部处理
+                    // 如果用户想完全断开，应使用 DISCONNECT action
                 }
                 /** SimSelectBottomSheet 用户选好卡后回调 */
                 "DIAL_WITH_SIM" -> {
@@ -271,9 +300,7 @@ class DialService : Service() {
                     tm.listen(it, PhoneStateListener.LISTEN_NONE)
                 } catch (_: Exception) {}
             }
-            disconnect()
-            disconnectCloud()
-            handler.removeCallbacksAndMessages(null)
+            if (::connectionManager.isInitialized) connectionManager.cleanup()
             isRunning = false; isConnected = false
             wakeLock?.release(); wakeLock = null
             pendingDialNumber = null
@@ -281,233 +308,12 @@ class DialService : Service() {
         } catch (_: Exception) {}
     }
 
-    // ==================== WebSocket 连接 ====================
+    // ==================== 发送方法（委托 ConnectionManager）====================
 
-    private fun connectToServer(ip: String, pin: String, isAutoReconnect: Boolean = false) {
-        try {
-            reconnectRunnable = null
-            try { webSocket?.cancel() } catch (_: Exception) {}
-            webSocket = null
-
-            val url = "ws://$ip:35432"
-            updateNotification("正在连接 $ip ...")
-            Log.d(TAG, "连接到 $url")
-
-            val request = Request.Builder().url(url).build()
-            webSocket = client.newWebSocket(request, object : WebSocketListener() {
-                override fun onOpen(ws: WebSocket, response: Response) {
-                    Log.d(TAG, "WebSocket 已打开")
-                    try {
-                        val deviceName = android.os.Build.MODEL ?: android.os.Build.DEVICE ?: "Android"
-                        ws.send(JSONObject().apply {
-                            put("type", "phone_hello"); put("pin", pin)
-                            put("deviceName", deviceName)
-                        }.toString())
-                    } catch (e: Exception) { Log.e(TAG, "发送失败: ${e.message}") }
-                }
-
-                override fun onMessage(ws: WebSocket, text: String) {
-                    try {
-                        val msg = JSONObject(text)
-                        when (msg.optString("type", "")) {
-                            "auth_ok" -> {
-                                Log.d(TAG, "配对成功")
-                                isConnected = true; manualConnecting = false
-                                connectionMode = "lan"  // LAN 优先
-                                handler.post {
-                                    updateNotification("已连接到电脑(LAN)")
-                                    getSharedPreferences("autodial", MODE_PRIVATE)
-                                        .edit().putBoolean("was_connected", true).apply()
-                                    notifyConnectionChange(true, null)
-                                }
-                            }
-                            "auth_fail" -> {
-                                isConnected = false; manualConnecting = false
-                                handler.post {
-                                    updateNotification("配对码错误")
-                                    notifyConnectionChange(false, "pin_wrong")
-                                }
-                                ws.close(1000, "auth_fail")
-                            }
-                            "dial" -> {
-                                val number = msg.optString("number", "")
-                                if (number.isNotEmpty()) {
-                                    Log.d(TAG, "拨号请求: $number")
-                                    handler.post { dialNumber(number) }
-                                }
-                            }
-                            "pong" -> {}
-                            "kicked" -> {
-                                isConnected = false; manualConnecting = false
-                                handler.post {
-                                    updateNotification("已被踢下线")
-                                    notifyConnectionChange(false, "kicked")
-                                }
-                            }
-                            "hangup" -> {
-                                Log.d(TAG, "收到挂断指令")
-                                handler.post { endCall() }
-                            }
-                            "sms" -> {
-                                val number = msg.optString("number", "")
-                                val content = msg.optString("content", "")
-                                if (number.isNotEmpty()) {
-                                    Log.d(TAG, "短信请求: $number, 内容长度=${content.length}")
-                                    handler.post {
-                                        val intent = Intent(ACTION_SHOW_SMS_CONFIRM).apply {
-                                            putExtra("number", number)
-                                            putExtra("content", content)
-                                            setPackage(packageName)
-                                        }
-                                        sendBroadcast(intent)
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e: Exception) { Log.e(TAG, "处理消息失败: ${e.message}") }
-                }
-
-                override fun onClosing(ws: WebSocket, code: Int, reason: String) {
-                    try { ws.close(1000, null) } catch (_: Exception) {}
-                }
-
-                override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                    Log.d(TAG, "关闭 code=$code reason=$reason")
-                    onDisconnected()
-                    if (isAutoReconnect) {
-                        handler.post { updateNotification("连接已断开，正在重连...") }
-                    } else {
-                        handler.post { notifyConnectionChange(false, "disconnected") }
-                    }
-                    scheduleReconnect()
-                }
-
-                override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-                    Log.e(TAG, "连接失败: ${t.message}")
-                    onDisconnected()
-                    if (isAutoReconnect) {
-                        handler.post { updateNotification("连接失败，正在重连...") }
-                    } else {
-                        handler.post { notifyConnectionChange(false, "connection_failed") }
-                    }
-                    scheduleReconnect()
-                }
-            })
-
-            // 设置发送结果的回调 - 使用统一发送方法
-            // _sendResultToPC 会自动选择 LAN/云端通道
-        } catch (e: Exception) {
-            Log.e(TAG, "创建连接失败: ${e.message}")
-            handler.post { notifyConnectionChange(false, "connection_failed") }
-        }
-    }
-
-    private fun onDisconnected() {
-        if (isConnected && connectionMode == "lan") {
-            isConnected = false
-            connectionMode = ""
-            // 如果云端已连接，切到云端
-            if (cloudConnected && cloudWebSocket != null) {
-                connectionMode = "cloud"
-                isConnected = true
-                handler.post {
-                    updateNotification("已切换到云端连接")
-                    notifyConnectionChange(true, null)
-                }
-            } else {
-                handler.post {
-                    updateNotification("连接已断开")
-                    notifyConnectionChange(false, "disconnected")
-                }
-            }
-        }
-    }
-
-    private fun scheduleReconnect() {
-        cancelReconnect()
-        val autoReconnect = getSharedPreferences("autodial", MODE_PRIVATE)
-            .getBoolean("auto_reconnect", true)
-        if (!autoReconnect) return
-
-        reconnectRunnable = Runnable {
-            if (lastIp.isNotEmpty() && lastPin.isNotEmpty() && !isConnected) {
-                Log.d(TAG, "自动重连到 $lastIp")
-                connectToServer(lastIp, lastPin, isAutoReconnect = true)
-            }
-        }
-        handler.postDelayed(reconnectRunnable!!, 3000)
-    }
-
-    private fun cancelReconnect() {
-        try { reconnectRunnable?.let { handler.removeCallbacks(it) }; reconnectRunnable = null } catch (_: Exception) {}
-    }
-
-    private fun disconnect() {
-        cancelReconnect(); manualConnecting = false
-        try { webSocket?.cancel() } catch (_: Exception) {}
-        webSocket = null
-        if (connectionMode == "lan") {
-            isConnected = false; connectionMode = ""
-        }
-        updateNotification("跨屏拨号 运行中")
-    }
-
-    // ==================== 统一发送方法（自动选择 LAN/云端通道）====================
-
-    /**
-     * 发送消息给 PC，优先 LAN，其次云端
-     * 发送失败时自动尝试切换通道
-     */
     private fun sendToPC(msg: JSONObject) {
-        // 优先 LAN
-        if (connectionMode == "lan" && webSocket != null) {
-            try {
-                val sent = webSocket?.send(msg.toString()) ?: false
-                if (sent) return
-            } catch (_: Exception) {
-                Log.w(TAG, "LAN 发送失败，尝试切换通道")
-                // LAN 发送异常，标记为不可用并切换到云端
-                webSocket = null
-                if (cloudWebSocket != null && cloudConnected) {
-                    connectionMode = "cloud"
-                    handler.post { updateNotification("已切换到云端连接") }
-                } else {
-                    connectionMode = ""
-                    isConnected = false
-                }
-            }
-        }
-        // 其次云端
-        if (connectionMode == "cloud" && cloudWebSocket != null) {
-            try {
-                val sent = cloudWebSocket?.send(msg.toString()) ?: false
-                if (sent) return
-            } catch (_: Exception) {
-                Log.w(TAG, "云端发送失败")
-                cloudWebSocket = null
-                if (connectionMode == "cloud") {
-                    connectionMode = ""
-                    isConnected = false
-                }
-            }
-        }
-        // 最后兜底：尝试两个通道（不管 connectionMode）
-        if (webSocket != null) {
-            try {
-                val sent = webSocket?.send(msg.toString()) ?: false
-                if (sent) return
-            } catch (_: Exception) {}
-        }
-        if (cloudWebSocket != null) {
-            try {
-                cloudWebSocket?.send(msg.toString())
-            } catch (_: Exception) {}
-        }
+        if (::connectionManager.isInitialized) connectionManager.send(msg)
     }
 
-    /**
-     * 供 companion object 调用的拨号结果回报
-     */
     private fun _sendResultToPC(number: String, status: String) {
         try {
             sendToPC(JSONObject().apply {
@@ -516,9 +322,6 @@ class DialService : Service() {
         } catch (_: Exception) {}
     }
 
-    /**
-     * 供 companion object 调用的短信结果回报
-     */
     private fun _sendSmsResultToPC(number: String, status: String) {
         try {
             sendToPC(JSONObject().apply {
@@ -527,253 +330,11 @@ class DialService : Service() {
         } catch (_: Exception) {}
     }
 
-    // ==================== 云中转 WebSocket 连接 ====================
-
-    /** 云中转重连退避计数器（0=首次，每次翻倍直到最大值） */
-    private var cloudReconnectAttempts = 0
-
-    /**
-     * 从云服务器列表中遍历尝试连接，成功一个即停止
-     * @param serversJson JSON 数组字符串，如 ["server1:port", "server2:port"]
-     * @param pin 配对码
-     * @param startIndex 开始尝试的索引（用于重连时从上次成功的位置继续）
-     */
-    private fun connectToCloudServersFromList(serversJson: String, pin: String, startIndex: Int = 0) {
-        try {
-            val arr = JSONArray(serversJson)
-            if (arr.length() == 0) {
-                Log.d(TAG, "云服务器列表为空")
-                return
-            }
-
-            // 从 startIndex 开始，循环遍历所有服务器
-            tryConnectCloudAtIndex(arr, pin, startIndex)
-        } catch (e: Exception) {
-            Log.e(TAG, "解析云服务器列表失败: ${e.message}")
-        }
-    }
-
-    /**
-     * 尝试连接列表中指定索引的服务器
-     * 如果失败，自动尝试下一个
-     */
-    private fun tryConnectCloudAtIndex(arr: JSONArray, pin: String, index: Int) {
-        if (index >= arr.length()) {
-            Log.d(TAG, "所有云服务器均连接失败")
-            handler.post {
-                updateNotification("所有云服务器连接失败")
-                notifyConnectionChange(false, "cloud_disconnected")
-            }
-            return
-        }
-
-        val server = arr.getString(index)
-        Log.d(TAG, "尝试云服务器 ${index + 1}/${arr.length()}: $server")
-        updateNotification("正在连接云端 ${index + 1}/${arr.length()}...")
-
-        connectToCloudServer(server, pin, onResult = { success ->
-            if (success) {
-                // 连接成功，保存当前服务器
-                getSharedPreferences("autodial", MODE_PRIVATE).edit()
-                    .putString("cloud_server", server)
-                    .apply()
-            } else {
-                // 连接失败，尝试下一个
-                Log.d(TAG, "云服务器 $server 连接失败，尝试下一个")
-                tryConnectCloudAtIndex(arr, pin, index + 1)
-            }
-        })
-    }
-    private fun connectToCloudServer(serverUrl: String, pin: String, onResult: ((Boolean) -> Unit)? = null) {
-        // 保存当前连接参数，供重连使用
-        currentCloudServer = serverUrl
-        currentPin = pin
-        // 注意：cloudReconnectAttempts 不在每次连接时重置，
-        // 而是在 auth_ok（连接成功）时才重置，以保证退避生效
-        try {
-            cancelCloudReconnect()
-            try { cloudWebSocket?.cancel() } catch (_: Exception) {}
-            cloudWebSocket = null
-
-            // 确保 URL 格式正确
-            val url = if (serverUrl.startsWith("ws://") || serverUrl.startsWith("wss://")) serverUrl
-                      else "ws://$serverUrl"
-
-            updateNotification("正在连接云端...")
-            Log.d(TAG, "连接到云中转: $url")
-
-            val request = Request.Builder().url(url).build()
-            cloudWebSocket = cloudClient.newWebSocket(request, object : WebSocketListener() {
-                override fun onOpen(ws: WebSocket, response: Response) {
-                    Log.d(TAG, "云端 WebSocket 已打开")
-                    try {
-                        val deviceName = android.os.Build.MODEL ?: android.os.Build.DEVICE ?: "Android"
-                        ws.send(JSONObject().apply {
-                            put("type", "phone_hello"); put("pin", pin)
-                            put("deviceName", deviceName)
-                        }.toString())
-                    } catch (e: Exception) { Log.e(TAG, "云端发送失败: ${e.message}") }
-                }
-
-                override fun onMessage(ws: WebSocket, text: String) {
-                    try {
-                        val msg = JSONObject(text)
-                        when (msg.optString("type", "")) {
-                            "auth_ok" -> {
-                                Log.d(TAG, "云端配对成功")
-                                cloudConnected = true
-                                cloudReconnectAttempts = 0
-                                // 如果 LAN 没连接，则使用云端
-                                if (connectionMode != "lan") {
-                                    connectionMode = "cloud"
-                                    isConnected = true
-                                }
-                                handler.post {
-                                    val modeText = if (connectionMode == "lan") "LAN" else "云端"
-                                    updateNotification("已连接到电脑($modeText)")
-                                    notifyConnectionChange(true, null)
-                                    onResult?.invoke(true)
-                                }
-                                notifyCloudStatus()
-                            }
-                            "auth_fail" -> {
-                                cloudConnected = false
-                                handler.post {
-                                    updateNotification("云端配对码错误")
-                                    notifyConnectionChange(false, "pin_wrong")
-                                    onResult?.invoke(false)
-                                }
-                                ws.close(1000, "auth_fail")
-                                notifyCloudStatus()
-                            }
-                            "dial" -> {
-                                val number = msg.optString("number", "")
-                                if (number.isNotEmpty()) {
-                                    Log.d(TAG, "云端拨号请求: $number")
-                                    handler.post { dialNumber(number) }
-                                }
-                            }
-                            "pong" -> {}
-                            "hangup" -> {
-                                Log.d(TAG, "云端收到挂断指令")
-                                handler.post { endCall() }
-                            }
-                            "sms" -> {
-                                val number = msg.optString("number", "")
-                                val content = msg.optString("content", "")
-                                if (number.isNotEmpty()) {
-                                    Log.d(TAG, "云端短信请求: $number")
-                                    handler.post {
-                                        val intent = Intent(ACTION_SHOW_SMS_CONFIRM).apply {
-                                            putExtra("number", number)
-                                            putExtra("content", content)
-                                            setPackage(packageName)
-                                        }
-                                        sendBroadcast(intent)
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e: Exception) { Log.e(TAG, "云端处理消息失败: ${e.message}") }
-                }
-
-                override fun onClosing(ws: WebSocket, code: Int, reason: String) {
-                    try { ws.close(1000, null) } catch (_: Exception) {}
-                }
-
-                override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                    Log.d(TAG, "云端关闭 code=$code reason=$reason")
-                    onCloudDisconnected()
-                    handler.post { onResult?.invoke(false) }
-                    scheduleCloudReconnect()
-                }
-
-                override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-                    Log.e(TAG, "云端连接失败: ${t.message}")
-                    onCloudDisconnected()
-                    handler.post { onResult?.invoke(false) }
-                    scheduleCloudReconnect()
-                }
-            })
-        } catch (e: Exception) {
-            Log.e(TAG, "创建云端连接失败: ${e.message}")
-        }
-    }
-
-    private fun onCloudDisconnected() {
-        val wasConnected = cloudConnected
-        cloudConnected = false
-        if (connectionMode == "cloud") {
-            isConnected = false
-            connectionMode = ""
-            handler.post {
-                updateNotification("云端连接已断开")
-                notifyConnectionChange(false, "cloud_disconnected")
-            }
-        }
-        notifyCloudStatus(if (wasConnected) "disconnected" else null)
-    }
-
-    private fun scheduleCloudReconnect() {
-        cancelCloudReconnect()
-        val autoReconnect = getSharedPreferences("autodial", MODE_PRIVATE)
-            .getBoolean("auto_reconnect", true)
-        if (!autoReconnect) return
-        if (currentPin.isEmpty()) return
-
-        cloudReconnectAttempts++
-        // 退避时间：5s, 10s, 20s, 40s, 60s（最大）
-        val delaySec = when (cloudReconnectAttempts) {
-            1 -> 5
-            2 -> 10
-            3 -> 20
-            4 -> 40
-            else -> 60
-        }
-        val delayMs = delaySec * 1000L
-
-        cloudReconnectRunnable = Runnable {
-            if (!cloudConnected) {
-                Log.d(TAG, "云端自动重连（第${cloudReconnectAttempts}次）")
-                // 尝试从服务器列表遍历连接
-                val serversJson = getSharedPreferences("autodial", MODE_PRIVATE)
-                    .getString("cloud_servers", null)
-                if (serversJson != null) {
-                    connectToCloudServersFromList(serversJson, currentPin)
-                } else if (currentCloudServer.isNotEmpty()) {
-                    // 向后兼容：单服务器模式
-                    connectToCloudServer(currentCloudServer, currentPin)
-                }
-            }
-        }
-        handler.postDelayed(cloudReconnectRunnable!!, delayMs)
-    }
-
-    private fun cancelCloudReconnect() {
-        try { cloudReconnectRunnable?.let { handler.removeCallbacks(it) }; cloudReconnectRunnable = null } catch (_: Exception) {}
-    }
-
-    private fun disconnectCloud() {
-        cancelCloudReconnect()
-        cloudReconnectAttempts = 0
-        try { cloudWebSocket?.cancel() } catch (_: Exception) {}
-        cloudWebSocket = null
-        cloudConnected = false
-        if (connectionMode == "cloud") {
-            isConnected = false; connectionMode = ""
-        }
-        // 注意：不在这里修改 cloud_enabled，只清理连接状态
-        // cloud_enabled 由用户在 UI 中手动控制
-        notifyCloudStatus()
-        updateNotification("跨屏拨号 运行中")
-        Log.d(TAG, "已断开云端连接")
-    }
-
     private fun notifyCloudStatus(reason: String? = null) {
         try {
             val intent = Intent(ACTION_CLOUD_STATUS).apply {
-                putExtra("connected", cloudConnected)
-                putExtra("mode", connectionMode)
+                putExtra("connected", if (::connectionManager.isInitialized) connectionManager.isCloudConnected else false)
+                putExtra("mode", if (::connectionManager.isInitialized) connectionManager.getTransportMode() else "")
                 reason?.let { putExtra("reason", it) }
                 setPackage(packageName)
             }

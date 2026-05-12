@@ -143,9 +143,33 @@ async def check_heartbeats():
             except Exception:
                 pass
 
+# ==================== PIN 尝试频率限制 ====================
+MAX_PIN_ATTEMPTS_PER_MINUTE = 5
+_pin_attempts: dict[str, list] = defaultdict(list)
+
+def check_rate_limit(client_ip: str) -> bool:
+    """检查是否超频，返回 True 表示应该拒绝"""
+    now = datetime.now()
+    # 清理过期条目
+    _pin_attempts[client_ip] = [
+        t for t in _pin_attempts[client_ip] if now - t < timedelta(minutes=1)
+    ]
+    if len(_pin_attempts[client_ip]) >= MAX_PIN_ATTEMPTS_PER_MINUTE:
+        return True
+    _pin_attempts[client_ip].append(now)
+    return False
+
 # ==================== 消息转发 ====================
-PHONE_TO_PC_TYPES = {'phone_hello', 'dial_result', 'sms_result', 'ping'}
-PC_TO_PHONE_TYPES = {'auth_ok', 'auth_fail', 'dial', 'sms', 'hangup'}
+PHONE_TO_PC_TYPES = {
+    'phone_hello', 'dial_result', 'sms_result', 'ping',
+    # 上传协议（无状态透传）
+    'file_upload_start', 'file_chunk', 'file_upload_complete', 'file_upload_error'
+}
+PC_TO_PHONE_TYPES = {
+    'auth_ok', 'auth_fail', 'dial', 'sms', 'hangup',
+    # 上传协议（无状态透传）
+    'file_chunk_ack', 'file_upload_error'
+}
 
 async def forward_to_pcs(pin, message, exclude_ws=None):
     group = pin_groups.get(pin)
@@ -164,8 +188,15 @@ async def forward_to_phones(pin, message, exclude_ws=None):
     if not group:
         return
     data = json.dumps(message, ensure_ascii=False)
+    target_device = message.get('targetDevice')
     for phone in list(group.phones):
         if phone != exclude_ws:
+            # 如果指定了 targetDevice，只转发给匹配的设备
+            if target_device:
+                phone_meta = ws_meta.get(phone, {})
+                phone_name = phone_meta.get('device_name', '')
+                if phone_name != target_device:
+                    continue
             try:
                 await phone.send(data)
             except Exception:
@@ -205,6 +236,11 @@ async def handle_connection(ws, path=None):
 
             # ===== 手机端握手 =====
             if msg_type == 'phone_hello':
+                # 频率限制检查
+                if check_rate_limit(client_ip):
+                    await ws.send(json.dumps({'type': 'auth_fail', 'reason': '请求过于频繁，请稍后再试'}))
+                    log.warning(f'RATE_LIMITED phone_hello ip={client_ip}')
+                    continue
                 pin = msg.get('pin', '')
                 if not pin or len(pin) < 4:
                     await ws.send(json.dumps({'type': 'auth_fail', 'reason': '配对码无效'}))
@@ -228,6 +264,11 @@ async def handle_connection(ws, path=None):
 
             # ===== PC 端握手 =====
             if msg_type == 'pc_hello':
+                # 频率限制检查
+                if check_rate_limit(client_ip):
+                    await ws.send(json.dumps({'type': 'pc_auth_fail', 'reason': '请求过于频繁，请稍后再试'}))
+                    log.warning(f'RATE_LIMITED pc_hello ip={client_ip}')
+                    continue
                 pin = msg.get('pin', '')
                 if not pin or len(pin) < 4:
                     await ws.send(json.dumps({'type': 'pc_auth_fail', 'reason': '配对码无效'}))

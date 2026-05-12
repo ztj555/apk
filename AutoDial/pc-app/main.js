@@ -136,56 +136,30 @@ const PORT = 35432;
 const DISCOVERY_PORT = 35433;
 
 // ==================== 多手机连接管理 ====================
-const phoneDevices = new Map();  // id -> { ws, ip, name, note, connectedAt }
-let activePhoneId = null;        // 当前活跃手机ID
+const PhoneConnectionManager = require('./phone-connection-manager');
+// 为了向后兼容，导出 phoneDevices 和 activePhoneId 的引用
+// 注意：新代码应使用 PhoneConnectionManager.phones / .activePhoneId
+const phoneDevices = PhoneConnectionManager.phones;
+let activePhoneId = null;  // 同步引用 PhoneConnectionManager.activePhoneId
 let pluginSocket = null;         // 插件端连接
 
 function getActivePhone() {
-  if (!activePhoneId) return null;
-  const dev = phoneDevices.get(activePhoneId);
-  if (!dev) return null;
-  // 检查任意可用连接
-  const lanOk = dev.ws && dev.ws.readyState === WebSocket.OPEN;
-  const cloudOk = dev.isCloud && dev.cloudWs && dev.cloudWs.readyState === WebSocket.OPEN;
-  if (!lanOk && !cloudOk) return null;
-  return dev;
+  const active = PhoneConnectionManager.getActivePhone();
+  if (!active) return null;
+  // 返回与旧格式兼容的设备对象
+  const dev = PhoneConnectionManager.phones.get(active.uuid);
+  return dev || null;
 }
 
-// 统一发送消息给手机（自动判断 LAN/云端，LAN优先）
-function sendToPhone(phone, msg) {
-  // 优先 LAN
-  if (phone.ws && phone.ws.readyState === WebSocket.OPEN) {
-    phone.ws.send(JSON.stringify(msg));
-    return true;
-  }
-  // 其次云端
-  if (phone.isCloud && phone.cloudWs && phone.cloudWs.readyState === WebSocket.OPEN) {
-    return sendToCloudPhone(phone, msg);
-  }
-  return false;
+// 统一发送消息给手机（通过 PhoneConnectionManager，自动判断 LAN/云端）
+function sendToPhone(phoneOrUuid, msg) {
+  const uuid = typeof phoneOrUuid === 'string' ? phoneOrUuid : (phoneOrUuid && phoneOrUuid._uuid);
+  if (!uuid) return false;
+  return PhoneConnectionManager.sendToPhone(uuid, msg);
 }
 
 function getPhoneList() {
-  const list = [];
-  phoneDevices.forEach((dev, id) => {
-    const lanOk = dev.ws && dev.ws.readyState === WebSocket.OPEN;
-    const cloudOk = !!dev.isCloud && dev.cloudWs && dev.cloudWs.readyState === WebSocket.OPEN;
-    let connType = 'none';
-    if (lanOk && cloudOk) connType = 'lan+cloud';
-    else if (lanOk) connType = 'lan';
-    else if (cloudOk) connType = 'cloud';
-    list.push({
-      id,
-      ip: dev.ip,
-      name: dev.name,
-      note: dev.note,
-      active: id === activePhoneId,
-      connectedAt: dev.connectedAt,
-      isCloud: cloudOk,
-      connectionType: connType
-    });
-  });
-  return list;
+  return PhoneConnectionManager.getPhoneList();
 }
 
 // 备注持久化：存储在 settings.phoneNotes 中，key 为 "ip|name"
@@ -1054,43 +1028,38 @@ wss.on('connection', (ws, req) => {
           return;
         }
         const deviceName = msg.deviceName || ('手机-' + clientIP.slice(-3));
-        // 以设备名为 key，同名下去重合并
-        const deviceId = deviceName;
+        const uuid = PhoneConnectionManager.generateUUID(deviceName, clientIP, false);
 
         // 清理同名旧连接
-        if (phoneDevices.has(deviceId)) {
-          const old = phoneDevices.get(deviceId);
+        if (PhoneConnectionManager.phones.has(uuid)) {
+          const old = PhoneConnectionManager.phones.get(uuid);
           try { if (old.ws && old.ws !== ws) old.ws.close(); } catch (e) {}
         }
 
         const savedNote = loadPhoneNote(clientIP, deviceName);
 
         ws.isPhone = true;
-        ws.deviceId = deviceId;
+        ws.deviceId = uuid;
 
-        phoneDevices.set(deviceId, {
-          ws,
+        PhoneConnectionManager.registerPhone(uuid, {
           ip: clientIP,
           name: deviceName,
           note: savedNote,
-          connectedAt: Date.now(),
-          isCloud: false,
-          cloudDeviceId: null
+          ws,
+          isCloud: false
         });
 
-        // 自动选中
-        if (!activePhoneId || !phoneDevices.has(activePhoneId)) {
-          activePhoneId = deviceId;
-        }
+        // 同步 activePhoneId 引用
+        activePhoneId = PhoneConnectionManager.activePhoneId;
 
-        ws.send(JSON.stringify({ type: 'auth_ok', message: '配对成功！', deviceId }));
-        _notifyPhonesUpdate();
+        ws.send(JSON.stringify({ type: 'auth_ok', message: '配对成功！', deviceId: uuid }));
         console.log('[配对] 手机连接成功: ' + deviceName + ' (' + clientIP + ')');
         return;
       }
 
       // 手机回报拨号结果
       if (msg.type === 'dial_result') {
+        PhoneConnectionManager.updateHeartbeat(ws.deviceId);
         console.log('[结果] ' + msg.number + ': ' + msg.status);
         [mainWindow, floatBarWindow].forEach(win => {
           if (win && !win.isDestroyed()) {
@@ -1102,6 +1071,7 @@ wss.on('connection', (ws, req) => {
 
       // 手机回报短信发送结果
       if (msg.type === 'sms_result') {
+        PhoneConnectionManager.updateHeartbeat(ws.deviceId);
         console.log('[短信结果] ' + msg.number + ': ' + msg.status);
         [mainWindow, floatBarWindow, smsWindow].forEach(win => {
           if (win && !win.isDestroyed()) {
@@ -1113,7 +1083,22 @@ wss.on('connection', (ws, req) => {
 
       // 心跳
       if (msg.type === 'ping') {
+        PhoneConnectionManager.updateHeartbeat(ws.deviceId);
         ws.send(JSON.stringify({ type: 'pong' }));
+        return;
+      }
+
+      // ==================== 上传协议消息分发 ====================
+      if (msg.type === 'file_upload_start' || msg.type === 'file_chunk' ||
+          msg.type === 'file_upload_complete' || msg.type === 'file_upload_error') {
+        PhoneConnectionManager.updateHeartbeat(ws.deviceId);
+        const handler = {
+          'file_upload_start': 'onFileUploadStart',
+          'file_chunk': 'onFileChunk',
+          'file_upload_complete': 'onFileUploadComplete',
+          'file_upload_error': 'onFileUploadError'
+        }[msg.type];
+        if (handler) PhoneConnectionManager[handler](ws.deviceId, msg);
         return;
       }
 
@@ -1121,21 +1106,21 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'plugin_hello') {
         pluginSocket = ws;
         ws.isPlugin = true;
-        ws.send(JSON.stringify({ type: 'plugin_ok', message: '插件已连接', phoneConnected: phoneDevices.size > 0 }));
+        ws.send(JSON.stringify({ type: 'plugin_ok', message: '插件已连接', phoneConnected: PhoneConnectionManager.phones.size > 0 }));
         console.log('[插件] 浏览器插件连接成功');
         return;
       }
 
       // 插件发送拨号命令
       if (msg.type === 'dial' && ws.isPlugin) {
-        const active = getActivePhone();
+        const active = PhoneConnectionManager.getActivePhone();
         if (!active) {
           ws.send(JSON.stringify({ type: 'dial_fail', reason: '手机未连接' }));
           console.log('[拒绝] 插件拨号失败：手机未连接');
           return;
         }
         // 转发拨号命令给活跃手机端
-        sendToPhone(active, { type: 'dial', number: msg.number });
+        PhoneConnectionManager.sendToPhone(active.uuid, { type: 'dial', number: msg.number });
         console.log('[插件-拨号] ' + msg.number + ' → ' + active.name + ' (来自浏览器插件)');
         // 确认给插件
         ws.send(JSON.stringify({ type: 'dial_sent', number: msg.number }));
@@ -1149,30 +1134,9 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     if (ws.isPhone && ws.deviceId) {
-      const dev = phoneDevices.get(ws.deviceId);
-      const name = dev ? dev.name : ws.deviceId;
-      if (dev && dev.ws === ws) {
-        // 该设备的 LAN 连接断开
-        dev.ws = null;
-        dev.ip = dev.isCloud ? 'cloud' : dev.ip;
-        // 如果还有云端连接，保留设备
-        if (dev.isCloud && dev.cloudWs && dev.cloudWs.readyState === WebSocket.OPEN) {
-          console.log('[断开] LAN断开，保留云端连接: ' + name);
-          _notifyPhonesUpdate();
-          return;
-        }
-        // 无云端，移除设备
-        phoneDevices.delete(ws.deviceId);
-      } else {
-        phoneDevices.delete(ws.deviceId);
-      }
-
-      if (activePhoneId === ws.deviceId) {
-        const first = phoneDevices.keys().next();
-        activePhoneId = first.done ? null : first.value;
-      }
-      _notifyPhonesUpdate();
-      console.log('[断开] 手机断开连接: ' + name);
+      PhoneConnectionManager.removePhone(ws.deviceId, 'lan');
+      activePhoneId = PhoneConnectionManager.activePhoneId;
+      console.log('[断开] 手机断开连接 (LAN)');
     }
     if (ws.isPlugin) {
       pluginSocket = null;
@@ -1186,15 +1150,16 @@ wss.on('connection', (ws, req) => {
 });
 
 function _notifyPhonesUpdate() {
+  activePhoneId = PhoneConnectionManager.activePhoneId;
   const data = {
-    phones: getPhoneList(),
-    activeId: activePhoneId,
-    connected: phoneDevices.size > 0
+    phones: PhoneConnectionManager.getPhoneList(),
+    activeId: PhoneConnectionManager.activePhoneId,
+    connected: PhoneConnectionManager.phones.size > 0
   };
   // 向后兼容：也发 status-update 事件（旧 UI 依赖）
   const compatData = {
-    connected: phoneDevices.size > 0,
-    phoneIP: activePhoneId ? (phoneDevices.get(activePhoneId)?.ip || null) : null
+    connected: PhoneConnectionManager.phones.size > 0,
+    phoneIP: PhoneConnectionManager.activePhoneId ? (PhoneConnectionManager.phones.get(PhoneConnectionManager.activePhoneId)?.ip || null) : null
   };
   [mainWindow, floatBarWindow, smsWindow].forEach(win => {
     if (win && !win.isDestroyed()) {
@@ -1203,6 +1168,12 @@ function _notifyPhonesUpdate() {
     }
   });
 }
+
+// 导出给 PhoneConnectionManager 内部回调使用
+global._notifyPhonesUpdate = _notifyPhonesUpdate;
+
+// 定期检查手机心跳超时
+setInterval(() => PhoneConnectionManager.checkHeartbeats(), 30000);
 
 // ==================== UDP 广播发现服务 ====================
 const udpSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
@@ -1318,50 +1289,28 @@ function connectCloudServer(targetServerUrl, onResult) {
         // 手机通过云端连接（phone_hello 被转发过来）
         if (msg.type === 'phone_hello') {
           const deviceName = msg.deviceName || ('云端手机');
-          const deviceId = deviceName;
+          const uuid = PhoneConnectionManager.generateUUID(deviceName, 'cloud', true);
 
-          if (phoneDevices.has(deviceId)) {
-            // 同名设备已存在，合并云端信息
-            const existing = phoneDevices.get(deviceId);
-            existing.isCloud = true;
-            existing.cloudDeviceId = msg.deviceId;
-            existing.cloudWs = cloudWs;
-            // 如果现有连接不是 LAN，标记为云端可用
-            if (!existing.ws || existing.ws.readyState !== WebSocket.OPEN) {
-              // 仅云端，不覆盖 ws
-            }
-            cloudWs.deviceId = deviceId;
-            console.log('[云端配对] 合并到已有设备: ' + deviceName);
-          } else {
-            // 新设备，新建条目
-            phoneDevices.set(deviceId, {
-              ws: null,
-              ip: 'cloud',
-              name: deviceName,
-              note: loadPhoneNote('cloud', deviceName),
-              connectedAt: Date.now(),
-              isCloud: true,
-              cloudDeviceId: msg.deviceId,
-              cloudWs: cloudWs
-            });
-            cloudWs.deviceId = deviceId;
-            console.log('[云端配对] 新设备: ' + deviceName);
-          }
+          PhoneConnectionManager.registerPhone(uuid, {
+            ip: 'cloud',
+            name: deviceName,
+            note: loadPhoneNote('cloud', deviceName),
+            cloudWs: cloudWs,
+            cloudDeviceId: msg.deviceId,
+            isCloud: true
+          });
 
-          // 自动选中
-          if (!activePhoneId || !phoneDevices.has(activePhoneId)) {
-            activePhoneId = deviceId;
-          }
+          activePhoneId = PhoneConnectionManager.activePhoneId;
 
           // 回复 auth_ok（通过云端转发）
           cloudWs.send(JSON.stringify({
             type: 'auth_ok',
             message: '配对成功！',
-            deviceId: deviceId,
+            deviceId: uuid,
             targetDevice: msg.deviceName
           }));
 
-          _notifyPhonesUpdate();
+          console.log('[云端配对] 手机: ' + deviceName + ' (uuid=' + uuid + ')');
           return;
         }
 
@@ -1414,20 +1363,13 @@ function connectCloudServer(targetServerUrl, onResult) {
       else if (code === 4000) errMsg = '心跳超时，服务器未收到客户端消息';
       else if (code) errMsg = '连接断开（code=' + code + '）';
       console.log('[云端] 连接断开 code=' + code + (errMsg ? ' 说明：' + errMsg : ''));
-      // 更新所有云端手机的 cloud 状态，保留有 LAN 连接的设备
-      phoneDevices.forEach((dev, id) => {
+      // 移除所有云端手机的 cloud 通道，保留有 LAN 连接的设备
+      PhoneConnectionManager.phones.forEach((dev, id) => {
         if (dev.isCloud) {
-          if (dev.ws && dev.ws.readyState === WebSocket.OPEN) {
-            // 还有 LAN 连接，只清除云端标记
-            dev.isCloud = false;
-            dev.cloudDeviceId = null;
-            dev.cloudWs = null;
-            dev.ip = dev.ip === 'cloud' ? 'LAN' : dev.ip;
-          } else {
-            phoneDevices.delete(id);
-          }
+          PhoneConnectionManager.removePhone(id, 'cloud');
         }
       });
+      activePhoneId = PhoneConnectionManager.activePhoneId;
       _notifyCloudStatus();
       _notifyPhonesUpdate();
       if (typeof onResult === 'function') {
@@ -1522,24 +1464,15 @@ function _scheduleCloudReconnect() {
 
 function _removeCloudPhones() {
   const toRemove = [];
-  phoneDevices.forEach((dev, id) => {
+  PhoneConnectionManager.phones.forEach((dev, id) => {
     if (dev.isCloud) {
-      if (dev.ws && dev.ws.readyState === WebSocket.OPEN) {
-        // 还有 LAN 连接，只清除云端标记
-        dev.isCloud = false;
-        dev.cloudDeviceId = null;
-        dev.cloudWs = null;
-      } else {
-        toRemove.push(id);
-      }
+      toRemove.push(id);
     }
   });
   toRemove.forEach(id => {
-    phoneDevices.delete(id);
-    if (activePhoneId === id) {
-      const first = phoneDevices.keys().next();
-      activePhoneId = first.done ? null : first.value;
-    }
+    PhoneConnectionManager.removePhone(id, 'cloud');
+  });
+  activePhoneId = PhoneConnectionManager.activePhoneId;
   });
 }
 
@@ -1560,15 +1493,15 @@ function disconnectCloudServer() {
   console.log('[云端] 已断开云中转连接');
 }
 
-// 发送消息给云端手机（需要包装 targetDevice 标识）
+// 发送消息给云端手机（通过 PhoneConnectionManager 统一处理）
+// 保留此函数以兼容旧调用方式
 function sendToCloudPhone(phone, msg) {
-  if (!cloudWs || cloudWs.readyState !== WebSocket.OPEN) return false;
-  const payload = { ...msg };
-  if (phone.cloudDeviceId) {
-    payload.targetDevice = phone.cloudDeviceId;
-  }
-  cloudWs.send(JSON.stringify(payload));
-  return true;
+  if (!phone) return false;
+  const uuid = phone._uuid || (PhoneConnectionManager.phones.forEach((dev, id) => {
+    if (dev === phone) return id;
+  }));
+  if (!uuid) return false;
+  return PhoneConnectionManager.sendToPhone(uuid, msg);
 }
 
 function _notifyCloudStatus() {

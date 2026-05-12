@@ -443,80 +443,9 @@ class ConnectFragment : Fragment() {
                     Toast.makeText(requireActivity(), "请输入4位配对码", Toast.LENGTH_SHORT).show()
                     return
                 }
-
-                if (discoveredIP.isEmpty()) {
-                    val colors3 = ThemeManager.getColors(requireContext())
-                    pinInput.isEnabled = false
-                    connectBtn.isEnabled = false
-                    statusText.text = "正在搜索电脑..."
-                    statusText.setTextColor(Color.parseColor(colors3.goldLight))
-
-                    discoveryJob = CoroutineScope(Dispatchers.IO).launch {
-                        var socket: java.net.DatagramSocket? = null
-                        try {
-                            socket = java.net.DatagramSocket(null)
-                            socket.reuseAddress = true
-                            socket.bind(java.net.InetSocketAddress(0))
-                            socket.soTimeout = 3000
-
-                            val discoverMsg = """{"type":"discover","pin":"$pin"}""".toByteArray()
-                            val broadcastAddr = java.net.InetAddress.getByName("255.255.255.255")
-                            val packet = java.net.DatagramPacket(discoverMsg, discoverMsg.size, broadcastAddr, 35433)
-
-                            repeat(5) {
-                                try { socket.send(packet) } catch (_: Exception) {}
-                                Thread.sleep(200)
-                            }
-
-                            val buffer = ByteArray(1024)
-                            val startTime = System.currentTimeMillis()
-                            var found = false
-
-                            while (System.currentTimeMillis() - startTime < 3000 && !found && isActive) {
-                                try {
-                                    val recvPacket = java.net.DatagramPacket(buffer, buffer.size)
-                                    socket.receive(recvPacket)
-                                    val data = String(recvPacket.data, 0, recvPacket.length)
-                                    val json = try { org.json.JSONObject(data) } catch (_: Exception) { continue }
-                                    val type = json.optString("type", "")
-                                    val responsePin = json.optString("pin", "")
-
-                                    if ((type == "found" || type == "announce") && responsePin == pin) {
-                                        val ip = json.optString("ip", "")
-                                        if (ip.isNotEmpty() && !ip.startsWith("127.")) {
-                                            discoveredIP = ip
-                                            found = true
-                                        }
-                                    }
-                                } catch (_: java.net.SocketTimeoutException) {}
-                                catch (_: Exception) {}
-                            }
-
-                            withContext(Dispatchers.Main) {
-                                pinInput.isEnabled = true
-                                connectBtn.isEnabled = true
-                                if (found && discoveredIP.isNotEmpty()) {
-                                    doConnect(discoveredIP, pin)
-                                } else {
-                                    Toast.makeText(requireActivity(), "未找到电脑，请确保电脑端已打开且在同一WiFi下", Toast.LENGTH_LONG).show()
-                                    statusText.text = "未找到电脑"
-                                    val colors4 = ThemeManager.getColors(requireContext())
-                                    statusText.setTextColor(Color.parseColor(colors4.text2))
-                                }
-                            }
-                        } catch (_: Exception) {
-                            withContext(Dispatchers.Main) {
-                                pinInput.isEnabled = true
-                                connectBtn.isEnabled = true
-                                Toast.makeText(requireActivity(), "扫描出错", Toast.LENGTH_SHORT).show()
-                            }
-                        } finally {
-                            try { socket?.close() } catch (_: Exception) {}
-                        }
-                    }
-                } else {
-                    doConnect(discoveredIP, pin)
-                }
+                // 连接逻辑统一交给 ConnectionManager
+                // 如果已通过 startDiscovery 找到 IP 则传入，否则由 ConnectionManager 自行发现
+                doConnect(discoveredIP, pin)
             }
         } catch (e: Exception) {
             Toast.makeText(requireActivity(), "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -527,22 +456,22 @@ class ConnectFragment : Fragment() {
         val colors = ThemeManager.getColors(requireContext())
         pinInput.isEnabled = false
         connectBtn.isEnabled = false
-        statusText.text = "正在连接 $ip ..."
+        statusText.text = if (ip.isNotEmpty()) "正在连接 $ip ..." else "正在搜索并连接..."
         statusText.setTextColor(Color.parseColor(colors.goldLight))
         statusDot.setImageResource(R.drawable.dot_gray)
 
         CoroutineScope(Dispatchers.Main).launch {
             delay(3000)
             if (!DialService.isConnected) {
-                    val colors2 = ThemeManager.getColors(requireContext())
-                    statusText.text = "连接中，请稍候...（若长时间连不上，可能是电脑防火墙拦截）"
-                    statusText.setTextColor(Color.parseColor(colors2.gold))
-                }
+                val colors2 = ThemeManager.getColors(requireContext())
+                statusText.text = "连接中，请稍候...（若长时间连不上，可能是电脑防火墙拦截）"
+                statusText.setTextColor(Color.parseColor(colors2.gold))
+            }
         }
 
         val intent = Intent(requireActivity(), DialService::class.java).apply {
             action = "CONNECT"
-            putExtra("ip", ip)
+            putExtra("ip", ip)  // 可能为空，ConnectionManager 会自行发现
             putExtra("pin", pin)
         }
         requireActivity().startService(intent)
