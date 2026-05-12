@@ -23,7 +23,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import kotlinx.coroutines.*
 
 class ConnectFragment : Fragment() {
 
@@ -33,9 +32,7 @@ class ConnectFragment : Fragment() {
     private lateinit var bannerText: TextView
     private lateinit var pinInput: EditText
     private lateinit var connectBtn: View
-    private lateinit var discoveryHint: TextView
-    private lateinit var foundPCInfo: LinearLayout
-    private lateinit var foundPCText: TextView
+    private lateinit var connectionHint: TextView
     private lateinit var autoConnectSwitch: TextView
     private lateinit var batteryOptStatus: TextView
     private lateinit var batteryOptBtn: TextView
@@ -46,12 +43,13 @@ class ConnectFragment : Fragment() {
     private lateinit var previewBg: View
     private lateinit var previewBg2: View
     private lateinit var previewText: View
-    private lateinit var cloudRelaySwitch: TextView
-    private lateinit var cloudServerSection: LinearLayout
     private lateinit var cloudServerManageBtn: TextView
     private lateinit var fetchServerListBtn: TextView
     private lateinit var cloudServerCurrentText: TextView
     private lateinit var cloudStatusText: TextView
+    private lateinit var cloudSettingsHeader: View
+    private lateinit var cloudSettingsContent: LinearLayout
+    private lateinit var cloudSettingsArrow: TextView
     private var cloudConnecting = false
     private lateinit var autoCopySwitch: TextView
     private lateinit var copyToastSwitch: TextView
@@ -71,9 +69,6 @@ class ConnectFragment : Fragment() {
             updateBatteryOptUI()
         }
     }
-
-    private var discoveredIP = ""
-    private var discoveryJob: Job? = null
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -125,9 +120,7 @@ class ConnectFragment : Fragment() {
             bannerText = view.findViewById(R.id.bannerText)
             pinInput = view.findViewById(R.id.pinInput)
             connectBtn = view.findViewById(R.id.connectBtn)
-            discoveryHint = view.findViewById(R.id.discoveryHint)
-            foundPCInfo = view.findViewById(R.id.foundPCInfo)
-            foundPCText = view.findViewById(R.id.foundPCText)
+            connectionHint = view.findViewById(R.id.connectionHint)
             autoConnectSwitch = view.findViewById(R.id.autoConnectSwitch)
             batteryOptStatus = view.findViewById(R.id.batteryOptStatus)
             batteryOptBtn = view.findViewById(R.id.batteryOptBtn)
@@ -179,29 +172,22 @@ class ConnectFragment : Fragment() {
             // 检查当前连接状态
             updateConnectionUI(DialService.isConnected, null)
 
-            // 云中转 UI 初始化
-            cloudRelaySwitch = view.findViewById(R.id.cloudRelaySwitch)
-            cloudServerSection = view.findViewById(R.id.cloudServerSection)
+            // 云端设置（可折叠）
+            cloudSettingsHeader = view.findViewById(R.id.cloudSettingsHeader)
+            cloudSettingsContent = view.findViewById(R.id.cloudSettingsContent)
+            cloudSettingsArrow = view.findViewById(R.id.cloudSettingsArrow)
             cloudServerManageBtn = view.findViewById(R.id.cloudServerManageBtn)
-        fetchServerListBtn = view.findViewById(R.id.fetchServerListBtn)
+            fetchServerListBtn = view.findViewById(R.id.fetchServerListBtn)
             cloudServerCurrentText = view.findViewById(R.id.cloudServerCurrentText)
             cloudStatusText = view.findViewById(R.id.cloudStatusText)
 
-            val cloudEnabled = prefs.getBoolean("cloud_enabled", false)
-            updateCloudRelayUI(cloudEnabled)
             updateCloudServerCurrentText()
 
-            // 云中转开关
-            view.findViewById<View>(R.id.cloudRelayRow).setOnClickListener {
-                val current = prefs.getBoolean("cloud_enabled", false)
-                val newValue = !current
-                prefs.edit().putBoolean("cloud_enabled", newValue).apply()
-                updateCloudRelayUI(newValue)
-                if (newValue) {
-                    connectCloudAll()
-                } else {
-                    disconnectCloud()
-                }
+            // 折叠/展开云端设置
+            cloudSettingsHeader.setOnClickListener {
+                val isVisible = cloudSettingsContent.visibility == View.VISIBLE
+                cloudSettingsContent.visibility = if (isVisible) View.GONE else View.VISIBLE
+                cloudSettingsArrow.text = if (isVisible) "▸" else "▾"
             }
 
             // 管理按钮 - 打开服务器管理对话框
@@ -209,7 +195,7 @@ class ConnectFragment : Fragment() {
                 showCloudServerManagementDialog()
             }
 
-            // 获取列表按钮 - 从 Gist 获取服务器列表
+            // 获取列表按钮
             fetchServerListBtn.setOnClickListener {
                 fetchServerList()
             }
@@ -308,22 +294,14 @@ class ConnectFragment : Fragment() {
             // 注册主题变更监听
             ThemeManager.addOnThemeChangedListener(themeListener)
 
-            // 配对码输入变化时自动扫描
+            // 配对码输入变化时自动保存
             pinInput.addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 override fun afterTextChanged(s: android.text.Editable?) {
                     val pin = s.toString().trim()
-                    if (pin.length == 4) {
-                        startDiscovery(pin)
-                    } else {
-                        stopDiscovery()
-                        discoveredIP = ""
-                        foundPCInfo.visibility = View.GONE
-                        if (pin.isEmpty()) {
-                            discoveryHint.text = "🔍 请输入配对码开始搜索"
-                        }
-                    }
+                    requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE)
+                        .edit().putString("pin", pin).apply()
                 }
             })
         } catch (e: Exception) {
@@ -349,81 +327,6 @@ class ConnectFragment : Fragment() {
         ThemeManager.removeOnThemeChangedListener(themeListener)
         try { requireActivity().unregisterReceiver(receiver) } catch (_: Exception) {}
         try { requireActivity().unregisterReceiver(cloudStatusReceiver) } catch (_: Exception) {}
-        stopDiscovery()
-    }
-
-    // ==================== UDP 局域网发现 ====================
-
-    private fun startDiscovery(pin: String) {
-        stopDiscovery()
-        discoveryHint.text = "🔍 正在扫描局域网..."
-        discoveryHint.visibility = View.VISIBLE
-        foundPCInfo.visibility = View.GONE
-        discoveredIP = ""
-
-        discoveryJob = CoroutineScope(Dispatchers.IO).launch {
-            var socket: java.net.DatagramSocket? = null
-            try {
-                socket = java.net.DatagramSocket(null)
-                socket.reuseAddress = true
-                socket.bind(java.net.InetSocketAddress(0))
-
-                val discoverMsg = """{"type":"discover","pin":"$pin"}""".toByteArray()
-                val broadcastAddr = java.net.InetAddress.getByName("255.255.255.255")
-                val packet = java.net.DatagramPacket(discoverMsg, discoverMsg.size, broadcastAddr, 35433)
-
-                var found = false
-                repeat(3) {
-                    if (found) return@repeat
-                    try { socket.send(packet) } catch (_: Exception) {}
-                }
-
-                socket.soTimeout = 5000
-                val buffer = ByteArray(1024)
-                val startTime = System.currentTimeMillis()
-
-                while (System.currentTimeMillis() - startTime < 4000 && !found && isActive) {
-                    try {
-                        val recvPacket = java.net.DatagramPacket(buffer, buffer.size)
-                        socket.receive(recvPacket)
-                        val data = String(recvPacket.data, 0, recvPacket.length)
-                        val json = try { org.json.JSONObject(data) } catch (_: Exception) { continue }
-                        val type = json.optString("type", "")
-                        val responsePin = json.optString("pin", "")
-                        if ((type == "found" || type == "announce") && responsePin == pin) {
-                            val ip = json.optString("ip", "")
-                            if (ip.isNotEmpty() && !ip.startsWith("127.")) {
-                                discoveredIP = ip
-                                found = true
-                                withContext(Dispatchers.Main) {
-                                    discoveryHint.text = "✅ 已找到电脑"
-                                    foundPCText.text = "💻 发现电脑: $ip"
-                                    foundPCInfo.visibility = View.VISIBLE
-                                }
-                            }
-                        }
-                    } catch (_: java.net.SocketTimeoutException) {}
-                    catch (_: Exception) {}
-                }
-
-                if (!found && isActive) {
-                    withContext(Dispatchers.Main) {
-                        discoveryHint.text = "⚠️ 未发现电脑，请确认在同一WiFi下"
-                    }
-                }
-            } catch (_: Exception) {
-                withContext(Dispatchers.Main) {
-                    discoveryHint.text = "⚠️ 扫描出错，请重试"
-                }
-            } finally {
-                try { socket?.close() } catch (_: Exception) {}
-            }
-        }
-    }
-
-    private fun stopDiscovery() {
-        discoveryJob?.cancel()
-        discoveryJob = null
     }
 
     // ==================== 连接控制 ====================
@@ -443,43 +346,27 @@ class ConnectFragment : Fragment() {
                     Toast.makeText(requireActivity(), "请输入4位配对码", Toast.LENGTH_SHORT).show()
                     return
                 }
-                // 连接逻辑统一交给 ConnectionManager
-                // 如果已通过 startDiscovery 找到 IP 则传入，否则由 ConnectionManager 自行发现
-                doConnect(discoveredIP, pin)
+                doConnect(pin)
             }
         } catch (e: Exception) {
             Toast.makeText(requireActivity(), "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun doConnect(ip: String, pin: String) {
+    private fun doConnect(pin: String) {
         val colors = ThemeManager.getColors(requireContext())
         pinInput.isEnabled = false
         connectBtn.isEnabled = false
-        statusText.text = if (ip.isNotEmpty()) "正在连接 $ip ..." else "正在搜索并连接..."
+        statusText.text = "正在搜索并连接..."
         statusText.setTextColor(Color.parseColor(colors.goldLight))
         statusDot.setImageResource(R.drawable.dot_gray)
-
-        CoroutineScope(Dispatchers.Main).launch {
-            delay(3000)
-            if (!DialService.isConnected) {
-                val colors2 = ThemeManager.getColors(requireContext())
-                statusText.text = "连接中，请稍候...（若长时间连不上，可能是电脑防火墙拦截）"
-                statusText.setTextColor(Color.parseColor(colors2.gold))
-            }
-        }
+        connectionHint.text = "先搜索局域网，找不到自动走云端"
 
         val intent = Intent(requireActivity(), DialService::class.java).apply {
             action = "CONNECT"
-            putExtra("ip", ip)  // 可能为空，ConnectionManager 会自行发现
             putExtra("pin", pin)
         }
         requireActivity().startService(intent)
-
-        requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE).edit()
-            .putString("pin", pin)
-            .putString("ip", ip)
-            .apply()
     }
 
     private fun sendDisconnectCommand() {
@@ -624,8 +511,13 @@ class ConnectFragment : Fragment() {
                 statusText.setTextColor(Color.parseColor(colors.green))
                 connectionBanner.visibility = View.VISIBLE
                 bannerText.text = "✅ 已连接到电脑！等待拨号指令..."
-                discoveryHint.visibility = View.GONE
-                foundPCInfo.visibility = View.GONE
+
+                val mode = DialService.connectionMode
+                connectionHint.text = when {
+                    mode.contains("lan") && mode.contains("cloud") -> "局域网 + 云端双通道"
+                    mode.contains("cloud") -> "通过云端连接"
+                    else -> "通过局域网直连（速度更快）"
+                }
 
                 val connectTextView = requireView().findViewById<TextView>(R.id.connectBtnText)
                 connectTextView.text = "断开连接"
@@ -634,7 +526,6 @@ class ConnectFragment : Fragment() {
             } else {
                 statusDot.setImageResource(R.drawable.dot_gray)
                 connectionBanner.visibility = View.GONE
-                foundPCInfo.visibility = View.GONE
 
                 val connectBtnLayout = requireView().findViewById<LinearLayout>(R.id.connectBtn)
                 connectBtnLayout.setBackgroundColor(Color.parseColor(colors.gold))
@@ -645,30 +536,30 @@ class ConnectFragment : Fragment() {
                     "pin_wrong" -> {
                         statusText.text = "配对码错误"
                         statusText.setTextColor(Color.parseColor(colors.red))
+                        connectionHint.text = "请重新输入配对码"
                         Toast.makeText(requireActivity(), "配对码不正确，请重新输入！", Toast.LENGTH_LONG).show()
-                        discoveryHint.text = "⚠️ 配对码错误，请重新输入"
-                        discoveryHint.visibility = View.VISIBLE
                     }
                     "kicked" -> {
                         statusText.text = "已被踢下线"
                         statusText.setTextColor(Color.parseColor(colors.red))
+                        connectionHint.text = ""
                         Toast.makeText(requireActivity(), "有其他手机连接了该电脑", Toast.LENGTH_LONG).show()
                     }
                     "connection_failed" -> {
                         statusText.text = "连接失败"
                         statusText.setTextColor(Color.parseColor(colors.red))
-                        Toast.makeText(requireActivity(), "无法连接到电脑，请检查：\n1. 电脑端是否已打开\n2. 手机和电脑是否在同一WiFi\n3. 电脑防火墙是否放行了端口", Toast.LENGTH_LONG).show()
-                        discoveryHint.text = "⚠️ 连接失败，请检查电脑端是否已打开且在同一网络"
-                        discoveryHint.visibility = View.VISIBLE
+                        connectionHint.text = "请检查电脑端是否已打开且在同一网络"
                     }
                     "disconnected" -> {
                         statusText.text = "连接已断开"
                         statusText.setTextColor(Color.parseColor(colors.gold))
+                        connectionHint.text = ""
                         Toast.makeText(requireActivity(), "与电脑的连接已断开", Toast.LENGTH_SHORT).show()
                     }
                     else -> {
                         statusText.text = "未连接"
                         statusText.setTextColor(Color.parseColor(colors.text2))
+                        connectionHint.text = "输入配对码后点击连接"
                     }
                 }
             }
@@ -677,23 +568,7 @@ class ConnectFragment : Fragment() {
         }
     }
 
-    // ==================== 云中转配置 ====================
-
-    private fun updateCloudRelayUI(enabled: Boolean) {
-        if (!isAdded) return
-        val colors = ThemeManager.getColors(requireContext())
-        if (enabled) {
-            cloudRelaySwitch.text = "开"
-            cloudRelaySwitch.setBackgroundColor(Color.parseColor(colors.gold))
-            cloudRelaySwitch.setTextColor(Color.parseColor(colors.bg))
-            cloudServerSection.visibility = View.VISIBLE
-        } else {
-            cloudRelaySwitch.text = "关"
-            cloudRelaySwitch.setBackgroundColor(Color.parseColor(colors.bg3))
-            cloudRelaySwitch.setTextColor(Color.parseColor("#888888"))
-            cloudServerSection.visibility = View.GONE
-        }
-    }
+    // ==================== 云端配置 ====================
 
     private fun updateCloudStatusUI(connected: Boolean, mode: String) {
         if (!isAdded) return
@@ -702,7 +577,6 @@ class ConnectFragment : Fragment() {
             val serverLabel = DialService.currentCloudServer
             cloudStatusText.text = if (serverLabel.isNotEmpty()) "✅ 已连接: $serverLabel" else "✅ 云端已连接"
             cloudStatusText.setTextColor(Color.parseColor("#2ECC71"))
-            Toast.makeText(requireActivity(), "✅ 云服务器连接成功", Toast.LENGTH_SHORT).show()
         } else {
             cloudStatusText.text = "未连接"
             cloudStatusText.setTextColor(Color.parseColor("#A09070"))
@@ -775,74 +649,6 @@ class ConnectFragment : Fragment() {
         if (!isAdded) return
         val list = getCloudServerList()
         cloudServerCurrentText.text = if (list.isEmpty()) "未配置服务器" else "${list.size} 台服务器 · ${list.first()}"
-    }
-
-    /** 连接云中转：遍历所有服务器，从第一个开始尝试 */
-    private fun connectCloudAll() {
-        if (!isAdded) return
-        val servers = getCloudServerList()
-        val pin = pinInput.text.toString().trim()
-        if (servers.isEmpty()) {
-            Toast.makeText(requireActivity(), "请先添加云服务器地址", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (pin.length != 4) {
-            Toast.makeText(requireActivity(), "请输入4位配对码", Toast.LENGTH_SHORT).show()
-            return
-        }
-        // 保存配置
-        requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE).edit()
-            .putBoolean("cloud_enabled", true)
-            .putString("cloud_servers", org.json.JSONArray().apply { servers.forEach { put(it) } }.toString())
-            .putString("cloud_server", servers[0])
-            .apply()
-        // 立即反馈
-        cloudConnecting = true
-        cloudStatusText.text = "正在遍历服务器..."
-        cloudStatusText.setTextColor(Color.parseColor("#C9A84C"))
-        // 发送连接请求（DialService 会遍历尝试）
-        val intent = Intent(requireActivity(), DialService::class.java).apply {
-            action = "CONNECT_CLOUD"
-            putExtra("cloud_servers", org.json.JSONArray().apply { servers.forEach { put(it) } }.toString())
-            putExtra("pin", pin)
-        }
-        requireActivity().startService(intent)
-    }
-
-    /** 手动连接到指定服务器 */
-    private fun connectCloudSpecific(serverUrl: String) {
-        if (!isAdded) return
-        val pin = pinInput.text.toString().trim()
-        if (serverUrl.isEmpty()) {
-            Toast.makeText(requireActivity(), "服务器地址为空", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (pin.length != 4) {
-            Toast.makeText(requireActivity(), "请输入4位配对码", Toast.LENGTH_SHORT).show()
-            return
-        }
-        // 立即反馈
-        cloudConnecting = true
-        cloudStatusText.text = "正在连接 $serverUrl ..."
-        cloudStatusText.setTextColor(Color.parseColor("#C9A84C"))
-        // 发送连接请求
-        val intent = Intent(requireActivity(), DialService::class.java).apply {
-            action = "CONNECT_CLOUD"
-            putExtra("cloud_server", serverUrl)
-            putExtra("pin", pin)
-        }
-        requireActivity().startService(intent)
-    }
-
-    private fun disconnectCloud() {
-        cloudConnecting = false
-        requireActivity().getSharedPreferences("autodial", Context.MODE_PRIVATE).edit()
-            .putBoolean("cloud_enabled", false).apply()
-        val intent = Intent(requireActivity(), DialService::class.java).apply {
-            action = "DISCONNECT_CLOUD"
-        }
-        requireActivity().startService(intent)
-        cloudStatusText.text = ""
     }
 
     // ==================== 云服务器管理对话框 ====================
@@ -927,7 +733,21 @@ class ConnectFragment : Fragment() {
                     setPadding(12, 6, 12, 6)
                     setOnClickListener {
                         dialog?.dismiss()
-                        connectCloudSpecific(server)
+                        // 直接通过 DialService 连接该服务器
+                        val pin = pinInput.text.toString().trim()
+                        if (pin.length == 4) {
+                            val intent = Intent(requireActivity(), DialService::class.java).apply {
+                                action = "CONNECT_CLOUD"
+                                putExtra("cloud_server", server)
+                                putExtra("pin", pin)
+                            }
+                            requireActivity().startService(intent)
+                            // 展开云端设置区域
+                            cloudSettingsContent.visibility = View.VISIBLE
+                            cloudSettingsArrow.text = "▾"
+                            cloudStatusText.text = "正在连接 $server ..."
+                            cloudStatusText.setTextColor(Color.parseColor("#C9A84C"))
+                        }
                     }
                 }
                 row.addView(connectBtn)

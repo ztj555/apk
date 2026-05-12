@@ -113,39 +113,16 @@
             android:maxLength="4"
             android:singleLine="true" />
 
-        <!-- 自动发现提示 -->
+        <!-- 连接方式提示 -->
         <TextView
-            android:id="@+id/discoveryHint"
+            android:id="@+id/connectionHint"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="🔍 请输入配对码开始搜索"
-            android:textColor="#605040"
+            android:text="输入配对码后点击连接"
             android:textSize="12sp"
-            android:visibility="visible" />
-
-        <!-- 已发现的电脑信息 -->
-        <LinearLayout
-            android:id="@+id/foundPCInfo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:tag="bg2"
-            android:background="#1A2A1A"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:padding="12dp"
-            android:visibility="gone">
-
-            <TextView
-                android:id="@+id/foundPCText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✅ 发现电脑: 192.168.x.x"
-                android:tag="green"
-                android:textColor="#2ECC71"
-                android:textSize="13sp" />
-        </LinearLayout>
+            android:tag="text2"
+            android:textColor="#605040" />
 
         <!-- 连接按钮 -->
         <LinearLayout
@@ -168,83 +145,50 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- ===== 云中转设置区域 ===== -->
-        <TextView
+        <!-- ===== 云端设置（可折叠） ===== -->
+        <LinearLayout
+            android:id="@+id/cloudSettingsHeader"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
-            android:text="云中转"
-            android:tag="text2"
-            android:textColor="#A09070"
-            android:textSize="12sp" />
-
-        <!-- 云中转开关 -->
-        <LinearLayout
-            android:id="@+id/cloudRelayRow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:tag="bg2"
-            android:background="#1A1D24"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:paddingTop="14dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="14dp">
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
 
-            <LinearLayout
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical">
+                android:text="云端设置"
+                android:tag="text2"
+                android:textColor="#A09070"
+                android:textSize="12sp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="云中转连接"
-                    android:tag="text"
-                    android:textColor="#E8DCC8"
-                    android:textSize="16sp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:text="不在同一WiFi时通过云服务器中转"
-                    android:tag="text2"
-                    android:textColor="#605040"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <!-- 开关 -->
             <TextView
-                android:id="@+id/cloudRelaySwitch"
-                android:layout_width="52dp"
-                android:layout_height="28dp"
-                android:tag="switchOff"
-                android:background="#3A3A3A"
-                android:gravity="center"
-                android:text="关"
-                android:textColor="#888"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:id="@+id/cloudSettingsArrow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="▸"
+                android:tag="text2"
+                android:textColor="#A09070"
+                android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- 云服务器管理 -->
+        <!-- 云端设置内容（默认隐藏） -->
         <LinearLayout
-            android:id="@+id/cloudServerSection"
+            android:id="@+id/cloudSettingsContent"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
             android:orientation="vertical"
             android:visibility="gone">
 
-            <!-- 当前服务器 + 管理按钮 -->
+            <!-- 服务器管理行 -->
             <LinearLayout
                 android:id="@+id/cloudServerManageRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
                 android:tag="bg2"
                 android:background="#1A1D24"
                 android:gravity="center_vertical"
@@ -279,7 +223,6 @@
                         android:textSize="12sp" />
                 </LinearLayout>
 
-                <!-- 管理按钮 -->
                 <TextView
                     android:id="@+id/cloudServerManageBtn"
                     android:layout_width="wrap_content"
@@ -293,7 +236,7 @@
                     android:textColor="#111318"
                     android:textSize="13sp"
                     android:textStyle="bold" />
-                <!-- 获取列表按钮 -->
+
                 <TextView
                     android:id="@+id/fetchServerListBtn"
                     android:layout_width="wrap_content"

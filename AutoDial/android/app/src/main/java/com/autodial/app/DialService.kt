@@ -239,16 +239,14 @@ class DialService : Service() {
                     lastPin = pin
 
                     val serversJson = intent.getStringExtra("cloud_servers")
-                    if (serversJson != null) {
+                    val servers = if (serversJson != null) {
                         getSharedPreferences("autodial", MODE_PRIVATE).edit()
                             .putBoolean("cloud_enabled", true)
                             .putString("cloud_servers", serversJson)
                             .putString("pin", pin)
                             .apply()
                         val arr = org.json.JSONArray(serversJson)
-                        val servers = (0 until arr.length()).map { arr.getString(it) }
-                        connectionManager.setCloudServers(servers)
-                        connectionManager.connect(pin)
+                        (0 until arr.length()).map { arr.getString(it) }
                     } else {
                         val server = intent.getStringExtra("cloud_server") ?: ""
                         if (server.isNotEmpty()) {
@@ -257,17 +255,18 @@ class DialService : Service() {
                                 .putString("cloud_server", server)
                                 .putString("pin", pin)
                                 .apply()
-                            connectionManager.setCloudServers(listOf(server))
-                            connectionManager.connect(pin)
-                        }
+                            listOf(server)
+                        } else emptyList()
+                    }
+                    if (servers.isNotEmpty()) {
+                        connectionManager.connectCloudOnly(servers, pin)
                     }
                 }
                 "DISCONNECT_CLOUD" -> {
-                    // 统一 disconnect 已覆盖，这里仅更新配置
                     getSharedPreferences("autodial", MODE_PRIVATE).edit()
                         .putBoolean("cloud_enabled", false).apply()
-                    // 注意：不调用 disconnect()，只断云端由 ConnectionManager 内部处理
-                    // 如果用户想完全断开，应使用 DISCONNECT action
+                    connectionManager.disconnect()
+                    updateNotification("跨屏拨号 运行中")
                 }
                 /** SimSelectBottomSheet 用户选好卡后回调 */
                 "DIAL_WITH_SIM" -> {

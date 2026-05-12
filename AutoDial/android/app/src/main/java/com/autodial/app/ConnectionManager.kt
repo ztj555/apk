@@ -127,6 +127,21 @@ class ConnectionManager(private val context: Context) {
     }
 
     /**
+     * 直接连接云端，跳过 LAN 发现
+     */
+    fun connectCloudOnly(servers: List<String>, pin: String) {
+        Log.d(TAG, "connectCloudOnly(pin=$pin, servers=${servers.size})")
+        cancelReconnect()
+        cancelCloudReconnect()
+        lastPin = pin
+        manualConnecting = true
+        cloudServerList = servers
+        if (servers.isNotEmpty()) currentCloudServer = servers[0]
+        setState(ConnectionState.CONNECTING)
+        connectCloud(servers, pin)
+    }
+
+    /**
      * 同时断开 LAN 和 Cloud 连接
      */
     fun disconnect() {
