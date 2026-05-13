@@ -18,3 +18,9 @@ pc-app/node_modules/
 *.zip
 *.log
 *.bat
+
+# Build outputs
+pc-app/output/
+pc-app/output2/
+cloud-relay/python/dist/
+cloud-relay/python/build/
