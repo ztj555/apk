@@ -89,6 +89,99 @@ class DialService : Service() {
     /** 当前正在等待用户选卡的号码 */
     private var pendingDialNumber: String? = null
 
+    /** 标记 listener 是否已注册（防止 catch 路径重复注册） */
+    private var listenerRegistered = false
+
+    /** ConnectionManager 状态监听器 */
+    private val connectionListener = object : ConnectionManager.ConnectionStateListener {
+        override fun onStateChanged(
+            newState: ConnectionManager.ConnectionState,
+            oldState: ConnectionManager.ConnectionState
+        ) {
+            connectionMode = connectionManager.getTransportMode()
+            when (newState) {
+                ConnectionManager.ConnectionState.CONNECTED -> {
+                    updateNotification("已连接到电脑(${connectionMode})")
+                    getSharedPreferences("autodial", MODE_PRIVATE)
+                        .edit().putBoolean("was_connected", true).apply()
+                    notifyConnectionChange(true, null)
+                    notifyCloudStatus(null)
+                }
+                ConnectionManager.ConnectionState.DISCONNECTED -> {
+                    if (oldState == ConnectionManager.ConnectionState.CONNECTED) {
+                        updateNotification("连接已断开")
+                        notifyConnectionChange(false, "disconnected")
+                    }
+                }
+                ConnectionManager.ConnectionState.CONNECTING -> {
+                    updateNotification("正在连接...")
+                }
+                ConnectionManager.ConnectionState.DISCOVERING -> {
+                    updateNotification("正在搜索电脑...")
+                }
+            }
+        }
+
+        override fun onMessageReceived(msg: JSONObject) {
+            // 业务消息分发（dial, sms, hangup 等）
+            try {
+                when (msg.optString("type", "")) {
+                    "dial" -> {
+                        val number = msg.optString("number", "")
+                        if (number.isNotEmpty()) {
+                            Log.d(TAG, "拨号请求: $number")
+                            dialNumber(number)
+                        }
+                    }
+                    "sms" -> {
+                        val number = msg.optString("number", "")
+                        val content = msg.optString("content", "")
+                        if (number.isNotEmpty()) {
+                            Log.d(TAG, "短信请求: $number, 内容长度=${content.length}")
+                            val intent = Intent(ACTION_SHOW_SMS_CONFIRM).apply {
+                                putExtra("number", number)
+                                putExtra("content", content)
+                                setPackage(packageName)
+                            }
+                            sendBroadcast(intent)
+                        }
+                    }
+                    "hangup" -> {
+                        Log.d(TAG, "收到挂断指令")
+                        endCall()
+                    }
+                }
+            } catch (e: Exception) { Log.e(TAG, "消息处理失败: ${e.message}") }
+        }
+
+        override fun onError(error: ConnectionManager.ConnectionError) {
+            when (error) {
+                is ConnectionManager.ConnectionError.AuthFailed -> {
+                    updateNotification("配对码错误")
+                    notifyConnectionChange(false, "pin_wrong")
+                }
+                is ConnectionManager.ConnectionError.Disconnected -> {
+                    updateNotification("连接已断开")
+                    notifyConnectionChange(false, error.reason)
+                }
+                else -> {
+                    Log.w(TAG, "Connection error: $error")
+                }
+            }
+        }
+    }
+
+    /**
+     * 确保 ConnectionManager 的 listener 已注册
+     */
+    private fun ensureListenerRegistered() {
+        if (listenerRegistered) return
+        if (!::connectionManager.isInitialized) return
+        connectionManager.addListener(connectionListener)
+        listenerRegistered = true
+        Log.d(TAG, "ConnectionManager listener registered")
+    }
+
     // ==================== 生命周期 ====================
 
     override fun onCreate() {
@@ -122,83 +215,7 @@ class DialService : Service() {
 
             // ==================== 初始化 ConnectionManager ====================
             connectionManager = ConnectionManager(this)
-            connectionManager.addListener(object : ConnectionManager.ConnectionStateListener {
-                override fun onStateChanged(
-                    newState: ConnectionManager.ConnectionState,
-                    oldState: ConnectionManager.ConnectionState
-                ) {
-                    connectionMode = connectionManager.getTransportMode()
-                    when (newState) {
-                        ConnectionManager.ConnectionState.CONNECTED -> {
-                            updateNotification("已连接到电脑(${connectionMode})")
-                            getSharedPreferences("autodial", MODE_PRIVATE)
-                                .edit().putBoolean("was_connected", true).apply()
-                            notifyConnectionChange(true, null)
-                            notifyCloudStatus(null)
-                        }
-                        ConnectionManager.ConnectionState.DISCONNECTED -> {
-                            if (oldState == ConnectionManager.ConnectionState.CONNECTED) {
-                                updateNotification("连接已断开")
-                                notifyConnectionChange(false, "disconnected")
-                            }
-                        }
-                        ConnectionManager.ConnectionState.CONNECTING -> {
-                            updateNotification("正在连接...")
-                        }
-                        ConnectionManager.ConnectionState.DISCOVERING -> {
-                            updateNotification("正在搜索电脑...")
-                        }
-                    }
-                }
-
-                override fun onMessageReceived(msg: JSONObject) {
-                    // 业务消息分发（dial, sms, hangup 等）
-                    try {
-                        when (msg.optString("type", "")) {
-                            "dial" -> {
-                                val number = msg.optString("number", "")
-                                if (number.isNotEmpty()) {
-                                    Log.d(TAG, "拨号请求: $number")
-                                    dialNumber(number)
-                                }
-                            }
-                            "sms" -> {
-                                val number = msg.optString("number", "")
-                                val content = msg.optString("content", "")
-                                if (number.isNotEmpty()) {
-                                    Log.d(TAG, "短信请求: $number, 内容长度=${content.length}")
-                                    val intent = Intent(ACTION_SHOW_SMS_CONFIRM).apply {
-                                        putExtra("number", number)
-                                        putExtra("content", content)
-                                        setPackage(packageName)
-                                    }
-                                    sendBroadcast(intent)
-                                }
-                            }
-                            "hangup" -> {
-                                Log.d(TAG, "收到挂断指令")
-                                endCall()
-                            }
-                        }
-                    } catch (e: Exception) { Log.e(TAG, "消息处理失败: ${e.message}") }
-                }
-
-                override fun onError(error: ConnectionManager.ConnectionError) {
-                    when (error) {
-                        is ConnectionManager.ConnectionError.AuthFailed -> {
-                            updateNotification("配对码错误")
-                            notifyConnectionChange(false, "pin_wrong")
-                        }
-                        is ConnectionManager.ConnectionError.Disconnected -> {
-                            updateNotification("连接已断开")
-                            notifyConnectionChange(false, error.reason)
-                        }
-                        else -> {
-                            Log.w(TAG, "Connection error: $error")
-                        }
-                    }
-                }
-            })
+            ensureListenerRegistered()
 
             // 自动重连（从保存的配置恢复）
             connectionManager.loadSavedConfig()
@@ -209,19 +226,23 @@ class DialService : Service() {
             callLogDb = CallLogDb(this)
             createNotificationChannel()
             try { startForeground(NOTIFICATION_ID, buildNotification("跨屏拨号 运行中")) } catch (_: Exception) {}
-            // 即使初始化失败，也要创建 ConnectionManager，避免 lateinit 错误
+            // 即使初始化失败，也要创建 ConnectionManager 并注册 listener
             if (!::connectionManager.isInitialized) {
                 connectionManager = ConnectionManager(this)
             }
+            ensureListenerRegistered()
+            // 尝试自动重连
+            try { connectionManager.loadSavedConfig() } catch (_: Exception) {}
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
-            // 确保 ConnectionManager 已初始化
+            // 确保 ConnectionManager 已初始化且 listener 已注册
             if (!::connectionManager.isInitialized) {
                 connectionManager = ConnectionManager(this)
             }
+            ensureListenerRegistered()
 
             when (intent?.action) {
                 "CONNECT" -> {
