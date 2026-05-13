@@ -132,6 +132,7 @@ class DialService : Service() {
                         put("type", "ack")
                         put("messageId", messageId)
                         put("originalType", originalType)
+                        put("deviceName", android.os.Build.MODEL ?: android.os.Build.DEVICE ?: "Android")
                     })
                     Log.d(TAG, "ACK sent for $originalType (id=$messageId)")
                 } catch (e: Exception) { Log.e(TAG, "ACK send failed: ${e.message}") }

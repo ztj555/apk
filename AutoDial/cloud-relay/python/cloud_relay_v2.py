@@ -161,7 +161,7 @@ def check_rate_limit(client_ip: str) -> bool:
 
 # ==================== 消息转发 ====================
 PHONE_TO_PC_TYPES = {
-    'phone_hello', 'dial_result', 'sms_result', 'ping',
+    'phone_hello', 'dial_result', 'sms_result', 'ping', 'ack',
     # 上传协议（无状态透传）
     'file_upload_start', 'file_chunk', 'file_upload_complete', 'file_upload_error'
 }

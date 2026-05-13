@@ -47,3 +47,6 @@ AutoDial/pc-app/node_modules/
 
 # Signing key (keep local only)
 *.p12
+
+# PC build outputs
+AutoDial/pc-app/output*/
