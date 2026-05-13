@@ -146,9 +146,12 @@ let pluginSocket = null;         // 插件端连接
 function getActivePhone() {
   const active = PhoneConnectionManager.getActivePhone();
   if (!active) return null;
-  // 返回与旧格式兼容的设备对象
+  // 返回内部设备对象，附加 uuid（Map value 本身不含 uuid）
   const dev = PhoneConnectionManager.phones.get(active.uuid);
-  return dev || null;
+  if (!dev) return null;
+  dev._uuid = active.uuid;
+  dev.uuid = active.uuid;
+  return dev;
 }
 
 // 统一发送消息给手机（通过 PhoneConnectionManager，自动判断 LAN/云端）
