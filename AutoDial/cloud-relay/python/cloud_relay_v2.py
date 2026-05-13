@@ -258,6 +258,8 @@ async def handle_connection(ws, path=None):
                     'pcCount': len(group.pcs)
                 }))
                 # 转发 phone_hello 给同 PIN 的所有 PC
+                # Bug6修复: 附加 deviceId（用手机端 device_name），使 PC 端能正确识别云端设备
+                msg['deviceId'] = meta['device_name']
                 await forward_to_pcs(pin, msg, ws)
                 log.info(f'PHONE_HELLO pin={pin} device={meta["device_name"]} ip={client_ip} pcs={len(group.pcs)}')
                 continue
