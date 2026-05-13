@@ -1,6 +1,7 @@
 package com.autodial.app
 
 import android.content.Context
+import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
@@ -13,7 +14,11 @@ import java.util.*
 /**
  * AutoDial 文件日志工具
  * 自动将关键日志写入手机文件，便于排查问题
- * 日志路径: /sdcard/Android/data/com.autodial.app/files/autodial-logs/
+ *
+ * 日志路径（按优先级）：
+ * 1. /sdcard/Download/AutoDial/logs/  ← 最容易找到，文件管理器直接可见
+ * 2. /sdcard/Android/data/com.autodial.app/files/autodial-logs/  ← 应用私有目录（备选）
+ *
  * 文件名: autodial-YYYY-MM-DD.log
  * 自动保留最近7天日志
  */
@@ -37,18 +42,7 @@ object FileLogger {
      */
     fun init(context: Context) {
         try {
-            // 优先使用外部存储（方便用户导出）
-            val externalDir = context.getExternalFilesDir(null)
-            if (externalDir != null) {
-                logDir = File(externalDir, "autodial-logs")
-            } else {
-                // 回退到内部存储
-                logDir = File(context.filesDir, "autodial-logs")
-            }
-
-            if (!logDir!!.exists()) {
-                logDir!!.mkdirs()
-            }
+            logDir = createLogDir(context)
 
             // 启动后台写入线程
             handlerThread = HandlerThread("FileLogger")
@@ -65,9 +59,48 @@ object FileLogger {
 
             i("FileLogger", "=== AutoDial 日志系统启动 ===")
             i("FileLogger", "日志目录: ${logDir?.absolutePath}")
+            Log.i(TAG, "AutoDial 日志目录: ${logDir?.absolutePath}")
         } catch (e: Exception) {
-            Log.e(TAG, "FileLogger init failed: ${e.message}")
+            Log.e(TAG, "FileLogger init failed: ${e.message}", e)
         }
+    }
+
+    /**
+     * 选择最合适的日志目录
+     * 优先使用 /sdcard/Download/AutoDial/logs/（用户容易找到）
+     */
+    private fun createLogDir(context: Context): File {
+        // 方案1: 尝试使用公共 Download 目录（最友好）
+        if (Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED) {
+            try {
+                val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val publicLogDir = File(downloadDir, "AutoDial/logs")
+                if (publicLogDir.exists() || publicLogDir.mkdirs()) {
+                    Log.i(TAG, "使用公共日志目录: ${publicLogDir.absolutePath}")
+                    return publicLogDir
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "公共目录创建失败: ${e.message}")
+            }
+        }
+
+        // 方案2: 应用外部私有目录
+        val externalDir = context.getExternalFilesDir(null)
+        if (externalDir != null) {
+            val appLogDir = File(externalDir, "autodial-logs")
+            if (appLogDir.exists() || appLogDir.mkdirs()) {
+                Log.i(TAG, "使用应用外部日志目录: ${appLogDir.absolutePath}")
+                return appLogDir
+            }
+        }
+
+        // 方案3: 回退到内部存储（最后手段）
+        val internalDir = File(context.filesDir, "autodial-logs")
+        if (!internalDir.exists()) {
+            internalDir.mkdirs()
+        }
+        Log.i(TAG, "使用内部日志目录: ${internalDir.absolutePath}")
+        return internalDir
     }
 
     /**
