@@ -153,7 +153,7 @@ function getActivePhone() {
 
 // 统一发送消息给手机（通过 PhoneConnectionManager，自动判断 LAN/云端）
 function sendToPhone(phoneOrUuid, msg) {
-  const uuid = typeof phoneOrUuid === 'string' ? phoneOrUuid : (phoneOrUuid && phoneOrUuid._uuid);
+  const uuid = typeof phoneOrUuid === 'string' ? phoneOrUuid : (phoneOrUuid && (phoneOrUuid.uuid || phoneOrUuid._uuid));
   if (!uuid) return false;
   return PhoneConnectionManager.sendToPhone(uuid, msg);
 }
