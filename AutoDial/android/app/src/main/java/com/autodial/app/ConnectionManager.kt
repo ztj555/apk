@@ -76,6 +76,10 @@ class ConnectionManager(private val context: Context) {
     private var cloudReconnectRunnable: Runnable? = null
     private var cloudReconnectAttempts = 0
 
+    // 心跳（应用层 ping，让 PC 端更新 lastHeartbeat）
+    private var heartbeatRunnable: Runnable? = null
+    private val HEARTBEAT_INTERVAL_MS = 30000L // 30 秒
+
     // 配置
     private var lastPin = ""
     private var lastLanIp = ""
@@ -658,6 +662,13 @@ class ConnectionManager(private val context: Context) {
 
         Log.d(TAG, "State: $oldState → $newState, transport=$transportMode")
         handler.post { notifyStateChange(oldState, newState) }
+
+        // 连接成功时启动应用层心跳，断开时停止
+        if (newState == ConnectionState.CONNECTED) {
+            startHeartbeat()
+        } else if (newState == ConnectionState.DISCONNECTED) {
+            stopHeartbeat()
+        }
     }
 
     private fun notifyStateChange(oldState: ConnectionState, newState: ConnectionState) {
@@ -669,6 +680,34 @@ class ConnectionManager(private val context: Context) {
     private fun notifyMessage(msg: JSONObject) {
         listeners.forEach { listener ->
             try { listener.onMessageReceived(msg) } catch (_: Exception) {}
+        }
+    }
+
+    // ==================== 应用层心跳 ====================
+
+    private fun startHeartbeat() {
+        stopHeartbeat()
+        heartbeatRunnable = Runnable {
+            if (state == ConnectionState.CONNECTED) {
+                val pingMsg = JSONObject().put("type", "ping")
+                try {
+                    lanWebSocket?.send(pingMsg.toString())
+                } catch (_: Exception) {}
+                try {
+                    cloudWebSocket?.send(pingMsg.toString())
+                } catch (_: Exception) {}
+                handler.postDelayed(heartbeatRunnable!!, HEARTBEAT_INTERVAL_MS)
+            }
+        }
+        handler.postDelayed(heartbeatRunnable!!, HEARTBEAT_INTERVAL_MS)
+        Log.d(TAG, "Heartbeat started")
+    }
+
+    private fun stopHeartbeat() {
+        heartbeatRunnable?.let {
+            handler.removeCallbacks(it)
+            heartbeatRunnable = null
+            Log.d(TAG, "Heartbeat stopped")
         }
     }
 
