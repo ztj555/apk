@@ -189,6 +189,7 @@ async def forward_to_phones(pin, message, exclude_ws=None):
         return
     data = json.dumps(message, ensure_ascii=False)
     target_device = message.get('targetDevice')
+    sent_count = 0
     for phone in list(group.phones):
         if phone != exclude_ws:
             # 如果指定了 targetDevice，只转发给匹配的设备
@@ -199,8 +200,13 @@ async def forward_to_phones(pin, message, exclude_ws=None):
                     continue
             try:
                 await phone.send(data)
+                sent_count += 1
             except Exception:
                 group.phones.discard(phone)
+    if target_device:
+        log.info(f'ROUTED to {sent_count} phone(s) matching targetDevice={target_device} pin={pin}')
+    if sent_count == 0 and target_device:
+        log.warning(f'NO phone matched targetDevice={target_device} pin={pin} (available: {[ws_meta.get(p, {}).get("device_name", "?") for p in group.phones]})')
 
 # ==================== WebSocket 处理 ====================
 server_instance = None
@@ -301,18 +307,22 @@ async def handle_connection(ws, path=None):
                 # ping 消息附加设备名称，便于 PC 端识别心跳来源
                 if msg_type == 'ping':
                     msg['deviceName'] = meta.get('device_name', '')
+                # ack 消息记录路由信息
+                if msg_type == 'ack':
+                    log.info(f'RELAY ack phone→pc pin={pin} messageId={msg.get("messageId","?")} originalType={msg.get("originalType","?")} deviceName={msg.get("deviceName","?")}')
                 await forward_to_pcs(pin, msg, ws)
                 if msg_type == 'ping':
                     await ws.send(json.dumps({'type': 'pong'}))
                     # ping 不记日志，避免刷屏
-                else:
+                elif msg_type != 'ack':
                     log.info(f'RELAY {msg_type} phone→pc pin={pin}')
                 continue
 
             # ===== PC→手机 转发 =====
             if msg_type in PC_TO_PHONE_TYPES:
+                target = msg.get('targetDevice', '')
+                log.info(f'RELAY {msg_type} pc→phone pin={pin} targetDevice={target}')
                 await forward_to_phones(pin, msg, ws)
-                log.info(f'RELAY {msg_type} pc→phone pin={pin}')
                 continue
 
             log.info(f'UNKNOWN type={msg_type} pin={pin}')

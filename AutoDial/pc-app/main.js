@@ -10,6 +10,74 @@ const fs = require('fs');
 const { exec, execSync } = require('child_process');
 const crypto = require('crypto');
 
+// ==================== 文件日志系统 ====================
+const LOG_DIR = path.join(app.getPath('userData'), 'autodial-logs');
+const MAX_LOG_DAYS = 7;
+
+// 确保日志目录存在
+try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch (e) {}
+
+/**
+ * 写入文件日志
+ * @param {string} level - INFO/WARN/ERROR/DEBUG/MSG
+ * @param {string} tag - 日志标签
+ * @param {string} msg - 日志内容
+ */
+function fileLog(level, tag, msg) {
+    try {
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10);
+        const timeStr = now.toISOString().slice(11, 23);
+        const line = `${timeStr} ${level}/${tag}: ${msg}\n`;
+
+        // 写入当天日志文件
+        const logFile = path.join(LOG_DIR, `autodial-pc-${dateStr}.log`);
+        fs.appendFileSync(logFile, line, 'utf8');
+
+        // 同时输出到控制台
+        if (level === 'ERROR') console.error(`[${tag}] ${msg}`);
+        else if (level === 'WARN') console.warn(`[${tag}] ${msg}`);
+    } catch (_e) {}
+}
+
+/**
+ * 记录消息收发日志（截断超长内容）
+ * @param {string} direction - SEND-LAN/SEND-CLOUD/RECV-LAN/RECV-CLOUD
+ * @param {string} msgType - 消息类型
+ * @param {string} content - 消息内容
+ */
+function logMessage(direction, msgType, content) {
+    const truncated = content.length > 500 ? content.substring(0, 500) + '...(truncated)' : content;
+    fileLog('MSG', direction, `[${msgType}] ${truncated}`);
+}
+
+/**
+ * 清理过期日志文件
+ */
+function cleanOldLogs() {
+    try {
+        const files = fs.readdirSync(LOG_DIR);
+        const cutoff = Date.now() - MAX_LOG_DAYS * 24 * 60 * 60 * 1000;
+        for (const file of files) {
+            if (file.endsWith('.log')) {
+                const filePath = path.join(LOG_DIR, file);
+                const stat = fs.statSync(filePath);
+                if (stat.mtimeMs < cutoff) {
+                    try { fs.unlinkSync(filePath); } catch (_e) {}
+                }
+            }
+        }
+    } catch (_e) {}
+}
+
+// 启动时清理过期日志
+cleanOldLogs();
+// 每6小时清理一次
+setInterval(cleanOldLogs, 6 * 60 * 60 * 1000);
+
+fileLog('INFO', 'FileLogger', '=== AutoDial PC 日志系统启动 ===');
+fileLog('INFO', 'FileLogger', '日志目录: ' + LOG_DIR);
+
 // ==================== 设置管理 ====================
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
 const DEFAULT_SETTINGS = {
@@ -1057,10 +1125,12 @@ wss.on('connection', (ws, req) => {
           ws.send(JSON.stringify({ type: 'auth_fail', reason: '配对码错误' }));
           ws.close();
           console.log('[拒绝] 配对码错误: ' + msg.pin);
+          fileLog('WARN', 'LAN', '配对码错误: ' + msg.pin);
           return;
         }
         const deviceName = msg.deviceName || ('手机-' + clientIP.slice(-3));
         const uuid = PhoneConnectionManager.generateUUID(deviceName, clientIP, false);
+        fileLog('INFO', 'LAN', 'phone_hello: device=' + deviceName + ' ip=' + clientIP + ' uuid=' + uuid);
 
         // 清理同名旧连接
         if (PhoneConnectionManager.phones.has(uuid)) {
@@ -1086,6 +1156,7 @@ wss.on('connection', (ws, req) => {
 
         ws.send(JSON.stringify({ type: 'auth_ok', message: '配对成功！', deviceId: uuid }));
         console.log('[配对] 手机连接成功: ' + deviceName + ' (' + clientIP + ')');
+        fileLog('INFO', 'LAN', '配对成功: ' + deviceName + ' (' + clientIP + ') uuid=' + uuid);
         return;
       }
 
@@ -1093,6 +1164,7 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'ack') {
         PhoneConnectionManager.updateHeartbeat(ws.deviceId);
         PhoneConnectionManager.handleAck(msg);
+        logMessage('RECV-LAN', 'ack', 'messageId=' + msg.messageId + ' originalType=' + msg.originalType + ' deviceName=' + msg.deviceName);
         return;
       }
 
@@ -1100,6 +1172,7 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'dial_result') {
         PhoneConnectionManager.updateHeartbeat(ws.deviceId);
         console.log('[结果] ' + msg.number + ': ' + msg.status);
+        fileLog('INFO', 'LAN', '拨号结果: ' + msg.number + ' → ' + msg.status);
         [mainWindow, floatBarWindow].forEach(win => {
           if (win && !win.isDestroyed()) {
             try { win.webContents.send('dial-result', msg); } catch (e) {}
@@ -1125,6 +1198,11 @@ wss.on('connection', (ws, req) => {
         PhoneConnectionManager.updateHeartbeat(ws.deviceId);
         ws.send(JSON.stringify({ type: 'pong' }));
         return;
+      }
+
+      // 普通消息也记录（dial, sms, hangup 等从 LAN 收到的）
+      if (msg.type === 'dial' || msg.type === 'sms' || msg.type === 'hangup') {
+        logMessage('RECV-LAN', msg.type, data.toString());
       }
 
       // ==================== 上传协议消息分发 ====================
@@ -1156,11 +1234,14 @@ wss.on('connection', (ws, req) => {
         if (!active) {
           ws.send(JSON.stringify({ type: 'dial_fail', reason: '手机未连接' }));
           console.log('[拒绝] 插件拨号失败：手机未连接');
+          fileLog('WARN', 'Plugin', '插件拨号失败：手机未连接');
           return;
         }
         // 转发拨号命令给活跃手机端（带ACK确认）
+        fileLog('INFO', 'Plugin', '插件拨号: ' + msg.number + ' → ' + active.name + ' (uuid=' + active.uuid + ')');
         PhoneConnectionManager.sendToPhoneWithAck(active.uuid, { type: 'dial', number: msg.number }).then(acked => {
           console.log('[插件-拨号] ' + msg.number + ' → ' + active.name + ' (来自浏览器插件)' + (acked ? ' ACK已确认' : ' ACK超时'));
+          fileLog('INFO', 'Plugin', '插件拨号结果: ' + msg.number + ' ' + (acked ? 'ACK已确认' : 'ACK超时'));
         });
         // 确认给插件
         ws.send(JSON.stringify({ type: 'dial_sent', number: msg.number }));
@@ -1177,6 +1258,7 @@ wss.on('connection', (ws, req) => {
       PhoneConnectionManager.removePhone(ws.deviceId, 'lan');
       activePhoneId = PhoneConnectionManager.activePhoneId;
       console.log('[断开] 手机断开连接 (LAN)');
+      fileLog('INFO', 'LAN', '手机断开连接 (LAN) uuid=' + ws.deviceId);
     }
     if (ws.isPlugin) {
       pluginSocket = null;
@@ -1284,12 +1366,14 @@ function connectCloudServer(targetServerUrl, onResult) {
   }
 
   console.log('[云端] 正在连接云中转服务器: ' + serverUrl);
+  fileLog('INFO', 'Cloud', '正在连接云中转服务器: ' + serverUrl);
 
   try {
     cloudWs = new WebSocket(serverUrl);
 
     cloudWs.on('open', () => {
       console.log('[云端] 已连接到云中转服务器');
+      fileLog('INFO', 'Cloud', 'WebSocket 已连接，发送 pc_hello');
       // 发送 PC 端握手
       cloudWs.send(JSON.stringify({
         type: 'pc_hello',
@@ -1309,6 +1393,7 @@ function connectCloudServer(targetServerUrl, onResult) {
           appSettings.cloudServer = serverUrl;
           saveSettings(appSettings);
           console.log('[云端] 认证成功，PIN=' + msg.pin + '，在线手机数=' + msg.phoneCount);
+          fileLog('INFO', 'Cloud', '认证成功 PIN=' + msg.pin + ' 在线手机数=' + msg.phoneCount);
           _notifyCloudStatus();
           // 如果是遍历连接模式，通知成功
           if (typeof onResult === 'function') {
@@ -1320,6 +1405,7 @@ function connectCloudServer(targetServerUrl, onResult) {
         if (msg.type === 'pc_auth_fail') {
           cloudConnected = false;
           console.error('[云端] 认证失败: ' + (msg.reason || ''));
+          fileLog('ERROR', 'Cloud', '认证失败: ' + (msg.reason || ''));
           _notifyCloudStatus();
           if (typeof onResult === 'function') {
             onResult(false, serverUrl);
@@ -1330,6 +1416,7 @@ function connectCloudServer(targetServerUrl, onResult) {
         if (msg.type === 'phone_hello') {
           const deviceName = msg.deviceName || ('云端手机');
           const uuid = PhoneConnectionManager.generateUUID(deviceName, 'cloud', true);
+          fileLog('INFO', 'Cloud', 'phone_hello: device=' + deviceName + ' deviceId=' + msg.deviceId + ' uuid=' + uuid);
 
           PhoneConnectionManager.registerPhone(uuid, {
             ip: 'cloud',
@@ -1351,11 +1438,13 @@ function connectCloudServer(targetServerUrl, onResult) {
           }));
 
           console.log('[云端配对] 手机: ' + deviceName + ' (uuid=' + uuid + ')');
+          fileLog('INFO', 'Cloud', '云端配对成功: ' + deviceName + ' (uuid=' + uuid + ' cloudDeviceId=' + msg.deviceId + ')');
           return;
         }
 
         // Bug2修复: 处理云端转发的手机 ACK 确认
         if (msg.type === 'ack') {
+          logMessage('RECV-CLOUD', 'ack', 'messageId=' + msg.messageId + ' originalType=' + msg.originalType + ' deviceName=' + msg.deviceName);
           PhoneConnectionManager.updateHeartbeatByName(msg.deviceName);
           PhoneConnectionManager.handleAck(msg);
           return;
@@ -1364,6 +1453,7 @@ function connectCloudServer(targetServerUrl, onResult) {
         // 手机回报拨号结果（云端转发）
         if (msg.type === 'dial_result') {
           console.log('[云端结果] ' + msg.number + ': ' + msg.status);
+          fileLog('INFO', 'Cloud', '拨号结果: ' + msg.number + ' → ' + msg.status);
           [mainWindow, floatBarWindow].forEach(win => {
             if (win && !win.isDestroyed()) {
               try { win.webContents.send('dial-result', msg); } catch (e) {}
@@ -1386,6 +1476,7 @@ function connectCloudServer(targetServerUrl, onResult) {
         // 云端心跳（手机端发送的 ping）
         if (msg.type === 'ping') {
           PhoneConnectionManager.updateHeartbeatByName(msg.deviceName);
+          logMessage('RECV-CLOUD', 'ping', 'deviceName=' + msg.deviceName);
           return;
         }
 
@@ -1416,6 +1507,7 @@ function connectCloudServer(targetServerUrl, onResult) {
       else if (code === 4000) errMsg = '心跳超时，服务器未收到客户端消息';
       else if (code) errMsg = '连接断开（code=' + code + '）';
       console.log('[云端] 连接断开 code=' + code + (errMsg ? ' 说明：' + errMsg : ''));
+      fileLog('WARN', 'Cloud', '连接断开 code=' + code + (errMsg ? ' ' + errMsg : ''));
       // 移除所有云端手机的 cloud 通道，保留有 LAN 连接的设备
       PhoneConnectionManager.phones.forEach((dev, id) => {
         if (dev.isCloud) {

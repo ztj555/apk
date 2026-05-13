@@ -99,6 +99,7 @@ class DialService : Service() {
             oldState: ConnectionManager.ConnectionState
         ) {
             connectionMode = connectionManager.getTransportMode()
+            FileLogger.i("DialService", "状态变化: $oldState → $newState, 通道=$connectionMode")
             when (newState) {
                 ConnectionManager.ConnectionState.CONNECTED -> {
                     updateNotification("已连接到电脑(${connectionMode})")
@@ -126,6 +127,7 @@ class DialService : Service() {
             // Bug2修复: 提取 messageId，立即回发 ACK
             val messageId = msg.optString("messageId", "")
             val originalType = msg.optString("type", "")
+            FileLogger.logMessage("RECV", originalType, msg.toString())
             if (messageId.isNotEmpty()) {
                 try {
                     sendToPC(JSONObject().apply {
@@ -134,8 +136,12 @@ class DialService : Service() {
                         put("originalType", originalType)
                         put("deviceName", android.os.Build.MODEL ?: android.os.Build.DEVICE ?: "Android")
                     })
+                    FileLogger.i("DialService", "ACK sent for $originalType (id=$messageId)")
                     Log.d(TAG, "ACK sent for $originalType (id=$messageId)")
-                } catch (e: Exception) { Log.e(TAG, "ACK send failed: ${e.message}") }
+                } catch (e: Exception) {
+                    Log.e(TAG, "ACK send failed: ${e.message}")
+                    FileLogger.e("DialService", "ACK send failed: ${e.message}")
+                }
             }
 
             // 业务消息分发（dial, sms, hangup 等）
@@ -143,6 +149,7 @@ class DialService : Service() {
                 when (originalType) {
                     "dial" -> {
                         val number = msg.optString("number", "")
+                        FileLogger.i("DialService", "收到拨号请求: $number")
                         if (number.isNotEmpty()) {
                             Log.d(TAG, "拨号请求: $number")
                             dialNumber(number)
@@ -151,6 +158,7 @@ class DialService : Service() {
                     "sms" -> {
                         val number = msg.optString("number", "")
                         val content = msg.optString("content", "")
+                        FileLogger.i("DialService", "收到短信请求: $number, 内容长度=${content.length}")
                         if (number.isNotEmpty()) {
                             Log.d(TAG, "短信请求: $number, 内容长度=${content.length}")
                             val intent = Intent(ACTION_SHOW_SMS_CONFIRM).apply {
@@ -162,6 +170,7 @@ class DialService : Service() {
                         }
                     }
                     "hangup" -> {
+                        FileLogger.i("DialService", "收到挂断指令")
                         Log.d(TAG, "收到挂断指令")
                         endCall()
                     }
@@ -231,6 +240,9 @@ class DialService : Service() {
             // ==================== 初始化 ConnectionManager ====================
             connectionManager = ConnectionManager(this)
             ensureListenerRegistered()
+
+            // 初始化文件日志
+            FileLogger.init(this)
 
             // 自动重连（从保存的配置恢复）
             connectionManager.loadSavedConfig()
@@ -349,6 +361,7 @@ class DialService : Service() {
                 } catch (_: Exception) {}
             }
             if (::connectionManager.isInitialized) connectionManager.cleanup()
+            FileLogger.shutdown()
             isRunning = false
             wakeLock?.release(); wakeLock = null
             pendingDialNumber = null
@@ -359,11 +372,16 @@ class DialService : Service() {
     // ==================== 发送方法（委托 ConnectionManager）====================
 
     private fun sendToPC(msg: JSONObject) {
-        if (::connectionManager.isInitialized) connectionManager.send(msg)
+        if (::connectionManager.isInitialized) {
+            val sent = connectionManager.send(msg)
+            FileLogger.logMessage("SEND", msg.optString("type", "?"), msg.toString())
+            if (!sent) FileLogger.w("DialService", "sendToPC failed: ${msg.optString("type", "?")}")
+        }
     }
 
     private fun _sendResultToPC(number: String, status: String) {
         try {
+            FileLogger.i("DialService", "拨号结果: $number → $status")
             sendToPC(JSONObject().apply {
                 put("type", "dial_result"); put("number", number); put("status", status)
             })
@@ -372,6 +390,7 @@ class DialService : Service() {
 
     private fun _sendSmsResultToPC(number: String, status: String) {
         try {
+            FileLogger.i("DialService", "短信结果: $number → $status")
             sendToPC(JSONObject().apply {
                 put("type", "sms_result"); put("number", number); put("status", status)
             })

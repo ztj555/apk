@@ -8,6 +8,28 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 
+// ==================== 文件日志（PC端共享） ====================
+const LOG_DIR = path.join(require('electron').app.getPath('userData'), 'autodial-logs');
+const MAX_LOG_DAYS = 7;
+
+try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch (e) {}
+
+function _fileLog(level, tag, msg) {
+    try {
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10);
+        const timeStr = now.toISOString().slice(11, 23);
+        const line = `${timeStr} ${level}/${tag}: ${msg}\n`;
+        const logFile = path.join(LOG_DIR, `autodial-pc-${dateStr}.log`);
+        fs.appendFileSync(logFile, line, 'utf8');
+    } catch (_e) {}
+}
+
+function _logMessage(direction, msgType, content) {
+    const truncated = content.length > 500 ? content.substring(0, 500) + '...(truncated)' : content;
+    _fileLog('MSG', direction, `[${msgType}] ${truncated}`);
+}
+
 const PhoneConnectionManager = {
     // --- State ---
     phones: new Map(),       // uuid -> { ws, cloudWs, ip, name, note, connectedAt, isCloud, cloudDeviceId, lastHeartbeat }
@@ -83,6 +105,11 @@ const PhoneConnectionManager = {
             ' (uuid=' + uuid + ', ip=' + (info.ip || 'cloud') +
             ', lan=' + !!info.ws + ', cloud=' + !!info.cloudWs + ')' +
             ', total=' + this.phones.size);
+        _fileLog('INFO', 'PhoneMgr', 'Registered: ' + (info.name || uuid) +
+            ' uuid=' + uuid + ' ip=' + (info.ip || 'cloud') +
+            ' lan=' + !!info.ws + ' cloud=' + !!info.cloudWs +
+            ' cloudDeviceId=' + (info.cloudDeviceId || 'null') +
+            ' isCloud=' + !!info.isCloud);
 
         this._notifyUpdate();
         return true;
@@ -140,9 +167,11 @@ const PhoneConnectionManager = {
         if (dev.ws && dev.ws.readyState === 1) { // WebSocket.OPEN = 1
             try {
                 dev.ws.send(JSON.stringify(msg));
+                _logMessage('SEND-LAN', msg.type || '?', JSON.stringify(msg));
                 return true;
             } catch (e) {
                 console.log('[PhoneMgr] LAN send failed: ' + e.message);
+                _fileLog('WARN', 'PhoneMgr', 'LAN send failed: ' + e.message);
                 dev.ws = null;
             }
         }
@@ -152,12 +181,18 @@ const PhoneConnectionManager = {
             try {
                 const payload = Object.assign({}, msg, { targetDevice: dev.cloudDeviceId });
                 dev.cloudWs.send(JSON.stringify(payload));
+                _logMessage('SEND-CLOUD', msg.type || '?', JSON.stringify(payload));
                 return true;
             } catch (e) {
                 console.log('[PhoneMgr] Cloud send failed: ' + e.message);
+                _fileLog('WARN', 'PhoneMgr', 'Cloud send failed: ' + e.message);
             }
         }
 
+        _fileLog('WARN', 'PhoneMgr', 'sendToPhone FAILED: uuid=' + uuid + ' type=' + (msg.type || '?') +
+            ' lan=' + !!(dev.ws && dev.ws.readyState === 1) +
+            ' cloud=' + !!(dev.cloudWs && dev.cloudWs.readyState === 1 && dev.cloudDeviceId) +
+            ' cloudDeviceId=' + (dev.cloudDeviceId || 'null'));
         return false;
     },
 
@@ -194,22 +229,26 @@ const PhoneConnectionManager = {
                 if (!ackEntry.retried && this.ACK_RETRY_ON_ALT_CHANNEL) {
                     // 超时未收到 ACK，在备选通道重试一次
                     console.log('[PhoneMgr] ACK timeout for ' + msg.type + ' (id=' + messageId + '), retrying on alt channel');
+                    _fileLog('WARN', 'PhoneMgr', 'ACK timeout for ' + msg.type + ' (id=' + messageId + '), retrying on alt channel from ' + ackEntry.channel);
                     ackEntry.retried = true;
                     const retryOk = this._sendOnAltChannel(uuid, msgWithId, ackEntry.channel);
                     if (retryOk) {
                         // 再等一个超时周期
                         ackEntry.timer = setTimeout(() => {
                             this._pendingAcks.delete(messageId);
-                            console.log('[PhoneMgr] ACK retry timeout for ' + msg.type + ' (id=' + messageId + ')');
-                            resolve(false);
+                        console.log('[PhoneMgr] ACK retry timeout for ' + msg.type + ' (id=' + messageId + ')');
+                        _fileLog('ERROR', 'PhoneMgr', 'ACK retry timeout for ' + msg.type + ' (id=' + messageId + ')');
+                        resolve(false);
                         }, timeout);
                         this._pendingAcks.set(messageId, ackEntry);
                     } else {
-                        console.log('[PhoneMgr] ACK retry failed, no alt channel for ' + msg.type);
-                        resolve(false);
+                console.log('[PhoneMgr] ACK retry failed, no alt channel for ' + msg.type);
+                _fileLog('ERROR', 'PhoneMgr', 'ACK retry failed, no alt channel for ' + msg.type);
+                resolve(false);
                     }
                 } else {
                     console.log('[PhoneMgr] ACK final timeout for ' + msg.type + ' (id=' + messageId + ')');
+                    _fileLog('ERROR', 'PhoneMgr', 'ACK final timeout for ' + msg.type + ' (id=' + messageId + ')');
                     resolve(false);
                 }
             }, timeout);
@@ -238,9 +277,11 @@ const PhoneConnectionManager = {
             try {
                 dev.ws.send(JSON.stringify(msg));
                 ackEntry.channel = 'lan';
+                _logMessage('SEND-LAN', msg.type || '?', JSON.stringify(msg));
                 return true;
             } catch (e) {
                 console.log('[PhoneMgr] LAN send failed: ' + e.message);
+                _fileLog('WARN', 'PhoneMgr', '_sendWithChannelTracking LAN failed: ' + e.message);
                 dev.ws = null;
             }
         }
@@ -251,12 +292,19 @@ const PhoneConnectionManager = {
                 const payload = Object.assign({}, msg, { targetDevice: dev.cloudDeviceId });
                 dev.cloudWs.send(JSON.stringify(payload));
                 ackEntry.channel = 'cloud';
+                _logMessage('SEND-CLOUD', msg.type || '?', JSON.stringify(payload));
                 return true;
             } catch (e) {
                 console.log('[PhoneMgr] Cloud send failed: ' + e.message);
+                _fileLog('WARN', 'PhoneMgr', '_sendWithChannelTracking Cloud failed: ' + e.message);
             }
         }
 
+        _fileLog('ERROR', 'PhoneMgr', '_sendWithChannelTracking FAILED: uuid=' + uuid +
+            ' type=' + (msg.type || '?') + ' messageId=' + (msg.messageId || '?') +
+            ' lan=' + !!(dev.ws && dev.ws.readyState === 1) +
+            ' cloud=' + !!(dev.cloudWs && dev.cloudWs.readyState === 1 && dev.cloudDeviceId) +
+            ' cloudDeviceId=' + (dev.cloudDeviceId || 'null'));
         return false;
     },
 
@@ -304,6 +352,8 @@ const PhoneConnectionManager = {
             this._pendingAcks.delete(msg.messageId);
             console.log('[PhoneMgr] ACK received for ' + (msg.originalType || 'unknown') +
                 ' (id=' + msg.messageId + ', took=' + (Date.now() - parseInt(msg.messageId.split('_')[1])) + 'ms)');
+            _fileLog('INFO', 'PhoneMgr', 'ACK received for ' + (msg.originalType || 'unknown') +
+                ' (id=' + msg.messageId + ', deviceName=' + (msg.deviceName || '?') + ')');
             entry.resolve(true);
         }
     },
@@ -313,12 +363,26 @@ const PhoneConnectionManager = {
      * @returns {Object|null} { uuid, ...device }
      */
     getActivePhone() {
-        if (!this.activePhoneId) return null;
+        if (!this.activePhoneId) {
+            _fileLog('WARN', 'PhoneMgr', 'getActivePhone: no activePhoneId');
+            return null;
+        }
         const dev = this.phones.get(this.activePhoneId);
-        if (!dev) return null;
+        if (!dev) {
+            _fileLog('WARN', 'PhoneMgr', 'getActivePhone: device not found for activePhoneId=' + this.activePhoneId);
+            return null;
+        }
         const lanOk = dev.ws && dev.ws.readyState === 1;
         const cloudOk = dev.isCloud && dev.cloudWs && dev.cloudWs.readyState === 1;
-        if (!lanOk && !cloudOk) return null;
+        if (!lanOk && !cloudOk) {
+            _fileLog('WARN', 'PhoneMgr', 'getActivePhone: both channels down for ' + dev.name +
+                ' (uuid=' + this.activePhoneId + ')' +
+                ' lan=' + lanOk + ' cloud=' + cloudOk +
+                ' ws=' + !!dev.ws + ' cloudWs=' + !!dev.cloudWs +
+                ' cloudDeviceId=' + (dev.cloudDeviceId || 'null') +
+                ' isCloud=' + dev.isCloud);
+            return null;
+        }
         return { uuid: this.activePhoneId, name: dev.name, ip: dev.ip, note: dev.note };
     },
 

@@ -116,6 +116,7 @@ class ConnectionManager(private val context: Context) {
      */
     fun connect(pin: String, hintIp: String = "") {
         Log.d(TAG, "connect(pin=$pin, hintIp=$hintIp)")
+        FileLogger.i(TAG, "connect(pin=$pin, hintIp=$hintIp)")
         cancelReconnect()
         cancelCloudReconnect()
 
@@ -141,6 +142,7 @@ class ConnectionManager(private val context: Context) {
      */
     fun disconnect() {
         Log.d(TAG, "disconnect()")
+        FileLogger.i(TAG, "disconnect()")
         manualConnecting = false
         cancelReconnect()
         cancelCloudReconnect()
@@ -180,6 +182,7 @@ class ConnectionManager(private val context: Context) {
      */
     fun connectCloudOnly(pin: String) {
         Log.d(TAG, "connectCloudOnly(pin=$pin)")
+        FileLogger.i(TAG, "connectCloudOnly(pin=$pin)")
         cancelReconnect()
         cancelCloudReconnect()
         lastPin = pin
@@ -204,9 +207,13 @@ class ConnectionManager(private val context: Context) {
         if (transportMode.contains("lan") && lanWebSocket != null) {
             try {
                 val sent = lanWebSocket?.send(msg.toString()) ?: false
-                if (sent) return true
+                if (sent) {
+                    FileLogger.logMessage("SEND-LAN", msg.optString("type", "?"), msg.toString())
+                    return true
+                }
             } catch (_: Exception) {
                 Log.w(TAG, "LAN send failed, trying fallback")
+                FileLogger.w(TAG, "LAN send failed, trying fallback")
                 lanWebSocket = null
                 // LAN 异常，如果云端可用则切换
                 if (cloudWebSocket != null && transportMode.contains("cloud")) {
@@ -222,9 +229,13 @@ class ConnectionManager(private val context: Context) {
         if (transportMode.contains("cloud") && cloudWebSocket != null) {
             try {
                 val sent = cloudWebSocket?.send(msg.toString()) ?: false
-                if (sent) return true
+                if (sent) {
+                    FileLogger.logMessage("SEND-CLOUD", msg.optString("type", "?"), msg.toString())
+                    return true
+                }
             } catch (_: Exception) {
                 Log.w(TAG, "Cloud send failed")
+                FileLogger.w(TAG, "Cloud send failed")
                 cloudWebSocket = null
                 if (transportMode == "cloud") {
                     transportMode = ""
@@ -397,6 +408,7 @@ class ConnectionManager(private val context: Context) {
 
             val url = "ws://$ip:$LAN_PORT"
             Log.d(TAG, "LAN connecting: $url")
+            FileLogger.i(TAG, "LAN connecting: $url")
 
             val request = Request.Builder().url(url).build()
             lanWebSocket = lanClient.newWebSocket(request, createLanListener(pin))
@@ -413,6 +425,7 @@ class ConnectionManager(private val context: Context) {
         return object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.d(TAG, "LAN WebSocket opened")
+                FileLogger.i(TAG, "LAN WebSocket opened")
                 try {
                     val deviceName = android.os.Build.MODEL ?: android.os.Build.DEVICE ?: "Android"
                     ws.send(JSONObject().apply {
@@ -425,9 +438,11 @@ class ConnectionManager(private val context: Context) {
             override fun onMessage(ws: WebSocket, text: String) {
                 try {
                     val msg = JSONObject(text)
+                    FileLogger.logMessage("RECV-LAN", msg.optString("type", "?"), text)
                     when (msg.optString("type", "")) {
                         "auth_ok" -> {
                             Log.d(TAG, "LAN auth OK")
+                            FileLogger.i(TAG, "LAN auth OK, transportMode before: $transportMode")
                             manualConnecting = false
                             transportMode = if (isCloudConnected) "lan+cloud" else "lan"
                             lastLanPongTime = System.currentTimeMillis()
@@ -436,6 +451,7 @@ class ConnectionManager(private val context: Context) {
                         }
                         "auth_fail" -> {
                             Log.w(TAG, "LAN auth failed")
+                            FileLogger.w(TAG, "LAN auth failed: ${msg.optString("reason", "")}")
                             manualConnecting = false
                             handler.post { notifyError(ConnectionError.AuthFailed(msg.optString("reason", ""))) }
                             ws.close(1000, "auth_fail")
@@ -483,6 +499,7 @@ class ConnectionManager(private val context: Context) {
     private fun handleLanDisconnect() {
         try { lanWebSocket?.cancel() } catch (_: Exception) {}
         lanWebSocket = null
+        FileLogger.w(TAG, "handleLanDisconnect, transportMode=$transportMode")
 
         val wasLan = transportMode.contains("lan")
         if (wasLan) {
@@ -524,6 +541,7 @@ class ConnectionManager(private val context: Context) {
 
         val server = servers[index]
         Log.d(TAG, "Trying cloud ${index + 1}/${servers.size}: $server")
+        FileLogger.i(TAG, "Trying cloud ${index + 1}/${servers.size}: $server")
         currentCloudServer = server
 
         if (state == ConnectionState.DISCOVERING || state == ConnectionState.DISCONNECTED) {
@@ -542,6 +560,7 @@ class ConnectionManager(private val context: Context) {
             cloudWebSocket = cloudClient.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(ws: WebSocket, response: Response) {
                     Log.d(TAG, "Cloud WebSocket opened")
+                    FileLogger.i(TAG, "Cloud WebSocket opened to $currentCloudServer")
                     try {
                         val deviceName = android.os.Build.MODEL ?: android.os.Build.DEVICE ?: "Android"
                         ws.send(JSONObject().apply {
@@ -554,9 +573,11 @@ class ConnectionManager(private val context: Context) {
                 override fun onMessage(ws: WebSocket, text: String) {
                     try {
                         val msg = JSONObject(text)
+                        FileLogger.logMessage("RECV-CLOUD", msg.optString("type", "?"), text)
                         when (msg.optString("type", "")) {
                             "auth_ok" -> {
                                 Log.d(TAG, "Cloud auth OK")
+                                FileLogger.i(TAG, "Cloud auth OK, transportMode: $transportMode")
                                 cloudReconnectAttempts = 0
                                 manualConnecting = false
                                 transportMode = if (transportMode.contains("lan")) "lan+cloud" else "cloud"
@@ -566,6 +587,7 @@ class ConnectionManager(private val context: Context) {
                             }
                             "auth_fail" -> {
                                 Log.w(TAG, "Cloud auth failed")
+                                FileLogger.w(TAG, "Cloud auth failed: ${msg.optString("reason", "")}")
                                 handler.post { notifyError(ConnectionError.AuthFailed(msg.optString("reason", ""))) }
                                 ws.close(1000, "auth_fail")
                                 // 尝试下一个服务器
@@ -590,12 +612,14 @@ class ConnectionManager(private val context: Context) {
 
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                     Log.d(TAG, "Cloud closed code=$code")
+                    FileLogger.w(TAG, "Cloud closed code=$code reason=$reason")
                     handleCloudDisconnect()
                     scheduleCloudReconnect()
                 }
 
                 override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                     Log.e(TAG, "Cloud failure: ${t.message}")
+                    FileLogger.e(TAG, "Cloud failure: ${t.message}")
                     handleCloudDisconnect()
                     // 如果正在主动连接中，尝试下一个
                     if (state == ConnectionState.CONNECTING) {
@@ -614,6 +638,7 @@ class ConnectionManager(private val context: Context) {
     private fun handleCloudDisconnect() {
         try { cloudWebSocket?.cancel() } catch (_: Exception) {}
         cloudWebSocket = null
+        FileLogger.w(TAG, "handleCloudDisconnect, transportMode=$transportMode")
 
         val wasCloud = transportMode.contains("cloud")
         if (wasCloud) {
@@ -679,6 +704,7 @@ class ConnectionManager(private val context: Context) {
         state = newState
 
         Log.d(TAG, "State: $oldState → $newState, transport=$transportMode")
+        FileLogger.i(TAG, "State: $oldState → $newState, transport=$transportMode")
         handler.post { notifyStateChange(oldState, newState) }
 
         // 连接成功时启动应用层心跳，断开时停止
