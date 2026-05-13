@@ -296,6 +296,9 @@ async def handle_connection(ws, path=None):
 
             # ===== 手机→PC 转发 =====
             if msg_type in PHONE_TO_PC_TYPES:
+                # ping 消息附加设备名称，便于 PC 端识别心跳来源
+                if msg_type == 'ping':
+                    msg['deviceName'] = meta.get('device_name', '')
                 await forward_to_pcs(pin, msg, ws)
                 if msg_type == 'ping':
                     await ws.send(json.dumps({'type': 'pong'}))

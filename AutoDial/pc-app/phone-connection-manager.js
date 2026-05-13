@@ -222,12 +222,24 @@ const PhoneConnectionManager = {
     },
 
     /**
-     * 更新设备心跳时间
+     * 更新设备心跳时间（通过 UUID）
      */
     updateHeartbeat(uuid) {
         const dev = this.phones.get(uuid);
         if (dev) {
             dev.lastHeartbeat = Date.now();
+        }
+    },
+
+    /**
+     * 更新设备心跳时间（通过设备名称，用于云端连接）
+     */
+    updateHeartbeatByName(deviceName) {
+        for (const [uuid, dev] of this.phones) {
+            if (dev.name === deviceName) {
+                dev.lastHeartbeat = Date.now();
+                return;
+            }
         }
     },
 

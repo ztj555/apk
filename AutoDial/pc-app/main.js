@@ -1336,6 +1336,12 @@ function connectCloudServer(targetServerUrl, onResult) {
           return;
         }
 
+        // 云端心跳（手机端发送的 ping）
+        if (msg.type === 'ping') {
+          PhoneConnectionManager.updateHeartbeatByName(msg.deviceName);
+          return;
+        }
+
         // 云端心跳回复
         if (msg.type === 'pong') {
           return;
