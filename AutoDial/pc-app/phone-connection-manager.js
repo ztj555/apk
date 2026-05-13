@@ -15,6 +15,12 @@ const PhoneConnectionManager = {
     MAX_PHONES: 5,           // 最大连接设备数
     HEARTBEAT_TIMEOUT: 90000, // 90 秒心跳超时（与云中转一致）
 
+    // Bug2修复: ACK 确认机制
+    ACK_TIMEOUT: 3000,          // 3 秒超时等待 ACK
+    ACK_RETRY_ON_ALT_CHANNEL: true, // 超时后在备选通道重试一次
+    _pendingAcks: new Map(),    // messageId -> { uuid, msg, resolve, reject, timer, channel, retried }
+    _msgIdCounter: 0,
+
     // --- Upload stub state ---
     // _activeUploads: new Map(), // uploadId -> { fileName, chunks, received, filePath }
 
@@ -153,6 +159,153 @@ const PhoneConnectionManager = {
         }
 
         return false;
+    },
+
+    /**
+     * Bug2修复: 带ACK确认的发送，用于关键消息(dial/hangup/sms)
+     * 在 sendToPhone 基础上增加 messageId，等待手机回 ack，超时则备选通道重试一次
+     * @param {string} uuid
+     * @param {Object} msg - JSON 消息对象（必须包含 type）
+     * @param {number} [timeout=3000] ACK 超时毫秒
+     * @returns {Promise<boolean>} 是否确认送达
+     */
+    sendToPhoneWithAck(uuid, msg, timeout) {
+        timeout = timeout || this.ACK_TIMEOUT;
+        const dev = this.phones.get(uuid);
+        if (!dev) return Promise.resolve(false);
+
+        // 生成 messageId
+        const messageId = 'ack_' + Date.now() + '_' + (++this._msgIdCounter);
+        const msgWithId = Object.assign({}, msg, { messageId });
+
+        return new Promise((resolve) => {
+            const ackEntry = {
+                uuid,
+                msg: msgWithId,
+                resolve,
+                timer: null,
+                channel: 'unknown',
+                retried: false
+            };
+
+            // 设置超时
+            ackEntry.timer = setTimeout(() => {
+                this._pendingAcks.delete(messageId);
+                if (!ackEntry.retried && this.ACK_RETRY_ON_ALT_CHANNEL) {
+                    // 超时未收到 ACK，在备选通道重试一次
+                    console.log('[PhoneMgr] ACK timeout for ' + msg.type + ' (id=' + messageId + '), retrying on alt channel');
+                    ackEntry.retried = true;
+                    const retryOk = this._sendOnAltChannel(uuid, msgWithId, ackEntry.channel);
+                    if (retryOk) {
+                        // 再等一个超时周期
+                        ackEntry.timer = setTimeout(() => {
+                            this._pendingAcks.delete(messageId);
+                            console.log('[PhoneMgr] ACK retry timeout for ' + msg.type + ' (id=' + messageId + ')');
+                            resolve(false);
+                        }, timeout);
+                        this._pendingAcks.set(messageId, ackEntry);
+                    } else {
+                        console.log('[PhoneMgr] ACK retry failed, no alt channel for ' + msg.type);
+                        resolve(false);
+                    }
+                } else {
+                    console.log('[PhoneMgr] ACK final timeout for ' + msg.type + ' (id=' + messageId + ')');
+                    resolve(false);
+                }
+            }, timeout);
+
+            this._pendingAcks.set(messageId, ackEntry);
+
+            // 发送消息
+            const sent = this._sendWithChannelTracking(uuid, msgWithId, ackEntry);
+            if (!sent) {
+                clearTimeout(ackEntry.timer);
+                this._pendingAcks.delete(messageId);
+                resolve(false);
+            }
+        });
+    },
+
+    /**
+     * Bug2修复: 内部方法 - 发送消息并记录使用的通道
+     */
+    _sendWithChannelTracking(uuid, msg, ackEntry) {
+        const dev = this.phones.get(uuid);
+        if (!dev) return false;
+
+        // LAN 优先
+        if (dev.ws && dev.ws.readyState === 1) {
+            try {
+                dev.ws.send(JSON.stringify(msg));
+                ackEntry.channel = 'lan';
+                return true;
+            } catch (e) {
+                console.log('[PhoneMgr] LAN send failed: ' + e.message);
+                dev.ws = null;
+            }
+        }
+
+        // Cloud 降级
+        if (dev.cloudWs && dev.cloudWs.readyState === 1 && dev.cloudDeviceId) {
+            try {
+                const payload = Object.assign({}, msg, { targetDevice: dev.cloudDeviceId });
+                dev.cloudWs.send(JSON.stringify(payload));
+                ackEntry.channel = 'cloud';
+                return true;
+            } catch (e) {
+                console.log('[PhoneMgr] Cloud send failed: ' + e.message);
+            }
+        }
+
+        return false;
+    },
+
+    /**
+     * Bug2修复: 内部方法 - 在备选通道发送（重试时使用）
+     */
+    _sendOnAltChannel(uuid, msg, usedChannel) {
+        const dev = this.phones.get(uuid);
+        if (!dev) return false;
+
+        if (usedChannel === 'lan') {
+            // 已经用了 LAN，重试用 Cloud
+            if (dev.cloudWs && dev.cloudWs.readyState === 1 && dev.cloudDeviceId) {
+                try {
+                    const payload = Object.assign({}, msg, { targetDevice: dev.cloudDeviceId });
+                    dev.cloudWs.send(JSON.stringify(payload));
+                    return true;
+                } catch (e) {
+                    console.log('[PhoneMgr] Cloud retry send failed: ' + e.message);
+                }
+            }
+        } else if (usedChannel === 'cloud') {
+            // 已经用了 Cloud，重试用 LAN
+            if (dev.ws && dev.ws.readyState === 1) {
+                try {
+                    dev.ws.send(JSON.stringify(msg));
+                    return true;
+                } catch (e) {
+                    console.log('[PhoneMgr] LAN retry send failed: ' + e.message);
+                }
+            }
+        }
+        return false;
+    },
+
+    /**
+     * Bug2修复: 处理手机端回的 ack 消息
+     * @param {Object} msg - { type: "ack", messageId: "...", originalType: "dial" }
+     */
+    handleAck(msg) {
+        if (!msg || !msg.messageId) return;
+        const entry = this._pendingAcks.get(msg.messageId);
+        if (entry) {
+            clearTimeout(entry.timer);
+            this._pendingAcks.delete(msg.messageId);
+            console.log('[PhoneMgr] ACK received for ' + (msg.originalType || 'unknown') +
+                ' (id=' + msg.messageId + ', took=' + (Date.now() - parseInt(msg.messageId.split('_')[1])) + 'ms)');
+            entry.resolve(true);
+        }
     },
 
     /**

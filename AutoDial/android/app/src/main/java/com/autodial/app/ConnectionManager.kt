@@ -60,12 +60,12 @@ class ConnectionManager(private val context: Context) {
     private val lanClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .pingInterval(30, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .readTimeout(45, TimeUnit.SECONDS) // Bug1修复: 45s无数据则判定死连接
         .build()
     private val cloudClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .pingInterval(30, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .readTimeout(45, TimeUnit.SECONDS) // Bug1修复: 同上
         .build()
 
     // Handler
@@ -78,7 +78,13 @@ class ConnectionManager(private val context: Context) {
 
     // 心跳（应用层 ping，让 PC 端更新 lastHeartbeat）
     private var heartbeatRunnable: Runnable? = null
+    private var pongCheckRunnable: Runnable? = null
     private val HEARTBEAT_INTERVAL_MS = 30000L // 30 秒
+    private val PONG_TIMEOUT_MS = 15000L // Bug1修复: 发送ping后15s内未收到pong则判定死连接
+    private var lastLanPongTime = 0L
+    private var lastCloudPongTime = 0L
+    private var lanPingInFlight = false
+    private var cloudPingInFlight = false
 
     // 配置
     private var lastPin = ""
@@ -424,6 +430,8 @@ class ConnectionManager(private val context: Context) {
                             Log.d(TAG, "LAN auth OK")
                             manualConnecting = false
                             transportMode = if (isCloudConnected) "lan+cloud" else "lan"
+                            lastLanPongTime = System.currentTimeMillis()
+                            lanPingInFlight = false
                             setState(ConnectionState.CONNECTED)
                         }
                         "auth_fail" -> {
@@ -433,7 +441,11 @@ class ConnectionManager(private val context: Context) {
                             ws.close(1000, "auth_fail")
                             connectCloud(cloudServerList, pin)
                         }
-                        "pong" -> {}
+                        "pong" -> {
+                            // Bug1修复: 记录LAN pong到达时间
+                            lastLanPongTime = System.currentTimeMillis()
+                            lanPingInFlight = false
+                        }
                         "kicked" -> {
                             Log.w(TAG, "Kicked by PC")
                             manualConnecting = false
@@ -548,6 +560,8 @@ class ConnectionManager(private val context: Context) {
                                 cloudReconnectAttempts = 0
                                 manualConnecting = false
                                 transportMode = if (transportMode.contains("lan")) "lan+cloud" else "cloud"
+                                lastCloudPongTime = System.currentTimeMillis()
+                                cloudPingInFlight = false
                                 setState(ConnectionState.CONNECTED)
                             }
                             "auth_fail" -> {
@@ -557,7 +571,11 @@ class ConnectionManager(private val context: Context) {
                                 // 尝试下一个服务器
                                 tryConnectCloudAtIndex(servers, pin, index + 1)
                             }
-                            "pong" -> {}
+                            "pong" -> {
+                                // Bug1修复: 记录Cloud pong到达时间
+                                lastCloudPongTime = System.currentTimeMillis()
+                                cloudPingInFlight = false
+                            }
                             else -> {
                                 // 业务消息 → 通知 DialService
                                 handler.post { notifyMessage(msg) }
@@ -687,27 +705,120 @@ class ConnectionManager(private val context: Context) {
 
     private fun startHeartbeat() {
         stopHeartbeat()
+        // Bug1修复: 初始化pong时间戳
+        lastLanPongTime = System.currentTimeMillis()
+        lastCloudPongTime = System.currentTimeMillis()
+        lanPingInFlight = false
+        cloudPingInFlight = false
+
         heartbeatRunnable = Runnable {
             if (state == ConnectionState.CONNECTED) {
+                val now = System.currentTimeMillis()
                 val pingMsg = JSONObject().put("type", "ping")
-                try {
-                    lanWebSocket?.send(pingMsg.toString())
-                } catch (_: Exception) {}
-                try {
-                    cloudWebSocket?.send(pingMsg.toString())
-                } catch (_: Exception) {}
+
+                // --- LAN 通道 ---
+                if (lanWebSocket != null && transportMode.contains("lan")) {
+                    // 检测pong超时：上次ping已发出但超过PONG_TIMEOUT_MS仍无pong
+                    if (lanPingInFlight && (now - lastLanPongTime) > PONG_TIMEOUT_MS) {
+                        Log.w(TAG, "LAN pong timeout, last pong ${now - lastLanPongTime}ms ago, downgrading")
+                        lanPingInFlight = false
+                        handleLanPongTimeout()
+                    } else {
+                        try {
+                            lanWebSocket?.send(pingMsg.toString())
+                            lanPingInFlight = true
+                        } catch (_: Exception) {
+                            Log.w(TAG, "LAN ping send failed")
+                            lanPingInFlight = false
+                        }
+                    }
+                }
+
+                // --- Cloud 通道 ---
+                if (cloudWebSocket != null && transportMode.contains("cloud")) {
+                    if (cloudPingInFlight && (now - lastCloudPongTime) > PONG_TIMEOUT_MS) {
+                        Log.w(TAG, "Cloud pong timeout, last pong ${now - lastCloudPongTime}ms ago")
+                        cloudPingInFlight = false
+                        handleCloudPongTimeout()
+                    } else {
+                        try {
+                            cloudWebSocket?.send(pingMsg.toString())
+                            cloudPingInFlight = true
+                        } catch (_: Exception) {
+                            Log.w(TAG, "Cloud ping send failed")
+                            cloudPingInFlight = false
+                        }
+                    }
+                }
+
                 handler.postDelayed(heartbeatRunnable!!, HEARTBEAT_INTERVAL_MS)
             }
         }
         handler.postDelayed(heartbeatRunnable!!, HEARTBEAT_INTERVAL_MS)
-        Log.d(TAG, "Heartbeat started")
+        Log.d(TAG, "Heartbeat started (with pong timeout detection)")
     }
 
     private fun stopHeartbeat() {
         heartbeatRunnable?.let {
             handler.removeCallbacks(it)
             heartbeatRunnable = null
-            Log.d(TAG, "Heartbeat stopped")
+        }
+        pongCheckRunnable?.let {
+            handler.removeCallbacks(it)
+            pongCheckRunnable = null
+        }
+        lanPingInFlight = false
+        cloudPingInFlight = false
+        Log.d(TAG, "Heartbeat stopped")
+    }
+
+    /**
+     * Bug1修复: LAN pong超时 → 关闭LAN，降级到Cloud
+     */
+    private fun handleLanPongTimeout() {
+        Log.w(TAG, "handleLanPongTimeout: LAN channel is dead, downgrading")
+        try { lanWebSocket?.cancel() } catch (_: Exception) {}
+        lanWebSocket = null
+
+        val wasLan = transportMode.contains("lan")
+        if (wasLan) {
+            if (isCloudConnected) {
+                transportMode = "cloud"
+                Log.d(TAG, "LAN pong timeout, fell back to cloud")
+                // 保持CONNECTED，但通知UI通道变化
+                handler.post {
+                    notifyStateChange(ConnectionState.CONNECTED, ConnectionState.CONNECTED)
+                }
+            } else {
+                // 没有云端备用，断开连接
+                setState(ConnectionState.DISCONNECTED)
+                if (autoReconnect) scheduleReconnect()
+            }
+        }
+    }
+
+    /**
+     * Bug1修复: Cloud pong超时 → 关闭Cloud，尝试重连
+     */
+    private fun handleCloudPongTimeout() {
+        Log.w(TAG, "handleCloudPongTimeout: Cloud channel is dead")
+        try { cloudWebSocket?.cancel() } catch (_: Exception) {}
+        cloudWebSocket = null
+
+        val wasCloud = transportMode.contains("cloud")
+        if (wasCloud) {
+            if (transportMode.contains("lan")) {
+                transportMode = "lan"
+                Log.d(TAG, "Cloud pong timeout, LAN still active")
+                // 保持CONNECTED，通知通道变化
+                handler.post {
+                    notifyStateChange(ConnectionState.CONNECTED, ConnectionState.CONNECTED)
+                }
+            } else {
+                setState(ConnectionState.DISCONNECTED)
+            }
+            // 尝试重连Cloud
+            if (autoReconnect) scheduleCloudReconnect()
         }
     }
 

@@ -123,9 +123,23 @@ class DialService : Service() {
         }
 
         override fun onMessageReceived(msg: JSONObject) {
+            // Bug2修复: 提取 messageId，立即回发 ACK
+            val messageId = msg.optString("messageId", "")
+            val originalType = msg.optString("type", "")
+            if (messageId.isNotEmpty()) {
+                try {
+                    sendToPC(JSONObject().apply {
+                        put("type", "ack")
+                        put("messageId", messageId)
+                        put("originalType", originalType)
+                    })
+                    Log.d(TAG, "ACK sent for $originalType (id=$messageId)")
+                } catch (e: Exception) { Log.e(TAG, "ACK send failed: ${e.message}") }
+            }
+
             // 业务消息分发（dial, sms, hangup 等）
             try {
-                when (msg.optString("type", "")) {
+                when (originalType) {
                     "dial" -> {
                         val number = msg.optString("number", "")
                         if (number.isNotEmpty()) {

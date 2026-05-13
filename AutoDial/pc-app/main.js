@@ -559,15 +559,23 @@ ipcMain.handle('read-clipboard', async () => {
 
 // OCR 功能已移除（tesseract.js 已卸载）
 
-// 拨号指令
+// 拨号指令（Bug2修复: 使用ACK确认机制）
 ipcMain.on('dial', (event, number) => {
   const active = getActivePhone();
   if (!active) {
     _sendError(event, '手机未连接');
     return;
   }
-  sendToPhone(active, { type: 'dial', number });
+  const uuid = active.uuid || active._uuid;
   console.log('[拨号] ' + number + ' → ' + active.name + (active.isCloud ? ' (云端)' : ' (' + active.ip + ')'));
+  // Bug2修复: 用 sendToPhoneWithAck 替代 sendToPhone，确保手机确认收到
+  PhoneConnectionManager.sendToPhoneWithAck(uuid, { type: 'dial', number }).then(acked => {
+    if (acked) {
+      console.log('[拨号] ACK已确认: ' + number);
+    } else {
+      console.log('[拨号] ACK超时，手机可能未收到: ' + number);
+    }
+  });
   // 通知 UI 拨号已发送
   [mainWindow, floatBarWindow].forEach(win => {
     if (win && !win.isDestroyed()) {
@@ -576,15 +584,22 @@ ipcMain.on('dial', (event, number) => {
   });
 });
 
-// 挂断指令
+// 挂断指令（Bug2修复: 使用ACK确认机制）
 ipcMain.on('hangup', (event) => {
   const active = getActivePhone();
   if (!active) {
     _sendError(event, '手机未连接');
     return;
   }
-  sendToPhone(active, { type: 'hangup' });
+  const uuid = active.uuid || active._uuid;
   console.log('[挂断] 电脑端发送挂断指令 → ' + active.name);
+  PhoneConnectionManager.sendToPhoneWithAck(uuid, { type: 'hangup' }).then(acked => {
+    if (acked) {
+      console.log('[挂断] ACK已确认');
+    } else {
+      console.log('[挂断] ACK超时，手机可能未收到');
+    }
+  });
   [mainWindow, floatBarWindow].forEach(win => {
     if (win && !win.isDestroyed()) {
       try { win.webContents.send('hangup-sent'); } catch (e) {}
@@ -592,15 +607,22 @@ ipcMain.on('hangup', (event) => {
   });
 });
 
-// 发送短信指令
+// 发送短信指令（Bug2修复: 使用ACK确认机制）
 ipcMain.on('send-sms', (event, data) => {
   const active = getActivePhone();
   if (!active) {
     _sendError(event, '手机未连接');
     return;
   }
-  sendToPhone(active, { type: 'sms', number: data.number, content: data.content });
+  const uuid = active.uuid || active._uuid;
   console.log('[短信] 发送短信请求: ' + data.number + ', 内容长度=' + data.content.length + ' → ' + active.name);
+  PhoneConnectionManager.sendToPhoneWithAck(uuid, { type: 'sms', number: data.number, content: data.content }).then(acked => {
+    if (acked) {
+      console.log('[短信] ACK已确认: ' + data.number);
+    } else {
+      console.log('[短信] ACK超时，手机可能未收到: ' + data.number);
+    }
+  });
 });
 
 // 打开短信编辑窗口
@@ -917,7 +939,11 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    sendToPhone(active, { type: 'dial', number });
+    // Bug2修复: HTTP拨号也用ACK确认
+    const uuid = active.uuid || active._uuid;
+    PhoneConnectionManager.sendToPhoneWithAck(uuid, { type: 'dial', number }).then(acked => {
+      console.log('[HTTP拨号] ' + number + ' (来自浏览器插件，已写入剪贴板)' + (acked ? ' ACK已确认' : ' ACK超时'));
+    });
 
     // 同时将号码写入剪贴板
     try { clipboard.writeText(number); } catch (e) {}
@@ -988,8 +1014,11 @@ const server = http.createServer((req, res) => {
       console.log('[HTTP挂断] 失败：手机未连接');
       return;
     }
-    sendToPhone(active, { type: 'hangup' });
-    console.log('[HTTP挂断] 插件发送挂断指令 → ' + active.name);
+    // Bug2修复: HTTP挂断也用ACK确认
+    const hangupUuid = active.uuid || active._uuid;
+    PhoneConnectionManager.sendToPhoneWithAck(hangupUuid, { type: 'hangup' }).then(acked => {
+      console.log('[HTTP挂断] 插件发送挂断指令 → ' + active.name + (acked ? ' ACK已确认' : ' ACK超时'));
+    });
     [mainWindow, floatBarWindow].forEach(win => {
       if (win && !win.isDestroyed()) {
         try { win.webContents.send('hangup-sent'); } catch (e) {}
@@ -1060,6 +1089,13 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+      // Bug2修复: 处理手机端回的 ACK 确认
+      if (msg.type === 'ack') {
+        PhoneConnectionManager.updateHeartbeat(ws.deviceId);
+        PhoneConnectionManager.handleAck(msg);
+        return;
+      }
+
       // 手机回报拨号结果
       if (msg.type === 'dial_result') {
         PhoneConnectionManager.updateHeartbeat(ws.deviceId);
@@ -1114,7 +1150,7 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      // 插件发送拨号命令
+      // 插件发送拨号命令（Bug2修复: 使用ACK确认机制）
       if (msg.type === 'dial' && ws.isPlugin) {
         const active = PhoneConnectionManager.getActivePhone();
         if (!active) {
@@ -1122,9 +1158,10 @@ wss.on('connection', (ws, req) => {
           console.log('[拒绝] 插件拨号失败：手机未连接');
           return;
         }
-        // 转发拨号命令给活跃手机端
-        PhoneConnectionManager.sendToPhone(active.uuid, { type: 'dial', number: msg.number });
-        console.log('[插件-拨号] ' + msg.number + ' → ' + active.name + ' (来自浏览器插件)');
+        // 转发拨号命令给活跃手机端（带ACK确认）
+        PhoneConnectionManager.sendToPhoneWithAck(active.uuid, { type: 'dial', number: msg.number }).then(acked => {
+          console.log('[插件-拨号] ' + msg.number + ' → ' + active.name + ' (来自浏览器插件)' + (acked ? ' ACK已确认' : ' ACK超时'));
+        });
         // 确认给插件
         ws.send(JSON.stringify({ type: 'dial_sent', number: msg.number }));
         return;
@@ -1314,6 +1351,13 @@ function connectCloudServer(targetServerUrl, onResult) {
           }));
 
           console.log('[云端配对] 手机: ' + deviceName + ' (uuid=' + uuid + ')');
+          return;
+        }
+
+        // Bug2修复: 处理云端转发的手机 ACK 确认
+        if (msg.type === 'ack') {
+          PhoneConnectionManager.updateHeartbeatByName(msg.deviceName);
+          PhoneConnectionManager.handleAck(msg);
           return;
         }
 
