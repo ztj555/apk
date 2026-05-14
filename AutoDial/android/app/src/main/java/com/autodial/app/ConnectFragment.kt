@@ -24,6 +24,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import kotlinx.coroutines.*
+import java.text.SimpleDateFormat
+import java.util.*
 
 class ConnectFragment : Fragment() {
 
@@ -58,6 +60,11 @@ class ConnectFragment : Fragment() {
     private lateinit var dialAnimationSwitch: TextView
     private lateinit var dialAnimationDesc: TextView
     private lateinit var dialAnimationTextPreview: TextView
+    private lateinit var exportLogInfo: TextView
+
+    companion object {
+        private const val REQUEST_CODE_EXPORT_LOG = 10001
+    }
 
     private val themeListener: () -> Unit = {
         if (isAdded) {
@@ -299,6 +306,13 @@ class ConnectFragment : Fragment() {
                     }
                     .setNegativeButton("取消", null)
                     .show()
+            }
+
+            // ===== 导出日志 =====
+            exportLogInfo = view.findViewById(R.id.exportLogInfo)
+            updateExportLogInfo()
+            view.findViewById<View>(R.id.exportLogRow).setOnClickListener {
+                exportLogs()
             }
 
             // 应用主题
@@ -1254,5 +1268,92 @@ class ConnectFragment : Fragment() {
                 ).show()
             }
         }.start()
+    }
+
+    // ==================== 导出日志 ====================
+
+    private fun updateExportLogInfo() {
+        if (!isAdded) return
+        val logFiles = FileLogger.getLogFiles()
+        val logDir = FileLogger.getLogDirPath()
+        if (logFiles.isEmpty()) {
+            exportLogInfo.text = "暂无日志文件"
+        } else {
+            val totalSize = logFiles.sumOf { it.length() } / 1024
+            exportLogInfo.text = "${logFiles.size} 个日志文件 · ${totalSize}KB"
+        }
+    }
+
+    private fun exportLogs() {
+        if (!isAdded) return
+        val logFiles = FileLogger.getLogFiles()
+        if (logFiles.isEmpty()) {
+            Toast.makeText(requireActivity(), "暂无日志文件", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 方式1: 优先使用 SAF 让用户选择保存位置
+        try {
+            val dateStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TITLE, "autodial-log-$dateStr.txt")
+            }
+            startActivityForResult(intent, REQUEST_CODE_EXPORT_LOG)
+        } catch (e: Exception) {
+            // SAF 不可用时，回退到分享方式
+            exportLogViaShare()
+        }
+    }
+
+    private fun exportLogViaShare() {
+        if (!isAdded) return
+        try {
+            val content = FileLogger.getAllLogsContent()
+            val dateStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val file = File(requireActivity().cacheDir, "autodial-log-$dateStr.txt")
+            file.writeText(content)
+
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                requireActivity(),
+                "${requireActivity().packageName}.fileprovider",
+                file
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "分享日志文件"))
+        } catch (e: Exception) {
+            // 最终回退：复制到剪贴板
+            try {
+                val content = FileLogger.getAllLogsContent()
+                val clipboard = requireActivity().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("autodial_log", content))
+                Toast.makeText(requireActivity(), "日志已复制到剪贴板（文件导出失败）", Toast.LENGTH_LONG).show()
+            } catch (_: Exception) {
+                Toast.makeText(requireActivity(), "导出日志失败: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_CODE_EXPORT_LOG && resultCode == android.app.Activity.RESULT_OK) {
+            val uri = data?.data ?: return
+            try {
+                val content = FileLogger.getAllLogsContent()
+                requireActivity().contentResolver.openOutputStream(uri)?.use { os ->
+                    os.write(content.toByteArray())
+                }
+                Toast.makeText(requireActivity(), "✅ 日志导出成功", Toast.LENGTH_SHORT).show()
+                FileLogger.i("ConnectFragment", "日志导出到: $uri")
+            } catch (e: Exception) {
+                Toast.makeText(requireActivity(), "导出失败: ${e.message}", Toast.LENGTH_LONG).show()
+                FileLogger.e("ConnectFragment", "日志导出失败: ${e.message}")
+            }
+        }
     }
 }

@@ -122,6 +122,39 @@ object FileLogger {
     fun getLogDirPath(): String = logDir?.absolutePath ?: "(未初始化)"
 
     /**
+     * 获取所有日志文件（按日期降序）
+     */
+    fun getLogFiles(): List<File> {
+        val dir = logDir ?: return emptyList()
+        val files = dir.listFiles()?.filter { it.name.endsWith(".log") } ?: emptyList()
+        return files.sortedByDescending { it.name }
+    }
+
+    /**
+     * 获取所有日志内容合并为一个字符串
+     */
+    fun getAllLogsContent(): String {
+        val sb = StringBuilder()
+        val dateTimeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        sb.appendLine("=== AutoDial 日志导出 ===")
+        sb.appendLine("导出时间: ${dateTimeFormat.format(Date())}")
+        sb.appendLine("日志目录: ${logDir?.absolutePath}")
+        sb.appendLine("设备: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+        sb.appendLine("Android: ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})")
+        sb.appendLine()
+        getLogFiles().forEach { file ->
+            sb.appendLine("========== ${file.name} ==========")
+            try {
+                sb.append(file.readText())
+            } catch (e: Exception) {
+                sb.appendLine("(读取失败: ${e.message})")
+            }
+            sb.appendLine()
+        }
+        return sb.toString()
+    }
+
+    /**
      * INFO 级别日志
      */
     fun i(tag: String, msg: String) {
